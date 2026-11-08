@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { changeQty, deletePlan, setRemainderDone, stopPlan } from '../actions';
 import { boughtQty, progress } from '../calc';
+import { IconCheck } from '../icons';
+import { shares } from '../labels';
 import { useNav } from '../nav';
 import { useAppState } from '../store';
-import { Empty, Field, NumInput, Page, ReasonSheet } from '../ui';
+import { Bar, Empty, Field, NumInput, Page, ReasonSheet } from '../ui';
 import { fmtDate, fmtDay, fmtMoney, parseNum } from '../util';
 import { LogCard } from './Logs';
 
@@ -17,8 +19,8 @@ export function PlanDetailPage({ id }: { id: string }) {
   const plan = s.plans.find((p) => p.id === id);
   if (!plan)
     return (
-      <Page title="일정">
-        <Empty>삭제된 일정입니다.</Empty>
+      <Page title="Plan">
+        <Empty>This plan was deleted.</Empty>
       </Page>
     );
 
@@ -29,21 +31,55 @@ export function PlanDetailPage({ id }: { id: string }) {
   const logs = s.logs.filter((l) => l.planId === plan.id);
   const parsed = parseNum(qty);
   const qtyValid = Number.isInteger(parsed) && parsed > 0 && parsed !== plan.dailyQty;
-  const statusText = plan.status === 'active' ? '진행 중' : plan.status === 'done' ? '완료' : '중단';
+  const statusText = plan.status === 'active' ? 'In progress' : plan.status === 'done' ? 'Done' : 'Stopped';
+  const unit = isSplit ? 'a day' : 'per buy';
 
   return (
-    <Page title={t?.symbol ?? '일정'} back="뒤로">
-      <section className="card">
-        <div className="row between">
-          <b>{plan.ruleName}</b>
-          <span className={'tag' + (plan.status === 'stopped' ? ' tag-warn' : '')}>{statusText}</span>
+    <Page title="" back="Back">
+      <section className="card hero">
+        <div className="card-label">
+          {plan.ruleName} · {isSplit ? 'Split' : plan.ruleType === 'fixed' ? 'Fixed shares' : 'Per signal'}
         </div>
+        <div className="hero-title">
+          {t?.symbol ?? 'Deleted ticker'}
+          <span className={'tag' + (plan.status === 'stopped' ? ' tag-warn' : plan.status === 'active' ? ' tag-accent' : '')}>{statusText}</span>
+        </div>
+        <div className="hero-nums">
+          <div>
+            <div className="label">Bought</div>
+            <div className="big-num">{boughtQty(plan)}</div>
+          </div>
+          {isSplit ? (
+            <>
+              <div>
+                <div className="label">Target</div>
+                <div className="big-num dim">{plan.totalQty}</div>
+              </div>
+              {plan.remainder > 0 && (
+                <div>
+                  <div className="label">Leftover</div>
+                  <div className="big-num dim">{plan.remainder}</div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div>
+              <div className="label">Buys</div>
+              <div className="big-num dim">{pr.done}</div>
+            </div>
+          )}
+        </div>
+        {isSplit && pr.total ? <Bar value={pr.done / pr.total} /> : null}
+      </section>
+
+      <h3 className="section-title">Plan</h3>
+      <section className="card">
         <dl className="facts">
           {plan.ruleType !== 'fixed' && (
             <>
-              <dt>씨드</dt>
+              <dt>Seed</dt>
               <dd>{fmtMoney(plan.seed, plan.seedCurrency)}</dd>
-              <dt>비중</dt>
+              <dt>Allocation</dt>
               <dd>
                 {plan.percent}% = {fmtMoney(plan.amount, cur)}
               </dd>
@@ -51,59 +87,64 @@ export function PlanDetailPage({ id }: { id: string }) {
           )}
           {plan.price > 0 && (
             <>
-              <dt>기준가</dt>
+              <dt>Base price</dt>
               <dd>{fmtMoney(plan.price, cur)}</dd>
             </>
           )}
           {plan.seedCurrency !== cur && plan.ruleType !== 'fixed' && (
             <>
-              <dt>환율</dt>
-              <dd>{plan.fxRate.toLocaleString('ko-KR')}원</dd>
+              <dt>Exchange rate</dt>
+              <dd>₩{plan.fxRate.toLocaleString('en-US')} / $1</dd>
             </>
           )}
-          <dt>{isSplit ? '하루' : '한 번에'}</dt>
-          <dd>{plan.dailyQty}주</dd>
-          <dt>지금까지</dt>
-          <dd>
-            {boughtQty(plan)}주{isSplit && ` / ${plan.totalQty}주`} · {pr.done}회
-          </dd>
-          <dt>시작</dt>
+          <dt>{isSplit ? 'Per day' : 'Per buy'}</dt>
+          <dd>{shares(plan.dailyQty)}</dd>
+          <dt>Started</dt>
           <dd>{fmtDate(plan.createdAt)}</dd>
           {plan.endedAt && (
             <>
-              <dt>끝</dt>
+              <dt>Ended</dt>
               <dd>{fmtDate(plan.endedAt)}</dd>
             </>
           )}
         </dl>
       </section>
 
-      <h3 className="section-title">회차</h3>
+      <h3 className="section-title">Rounds</h3>
       <section className="card">
-        {plan.entries.length === 0 && <div className="muted small">아직 매수한 날이 없습니다.</div>}
+        {plan.entries.length === 0 && <div className="muted small">No buys yet.</div>}
         <ol className="entries">
-          {plan.entries.map((e) => (
-            <li key={e.n} className={e.actualQty !== null ? 'done' : ''}>
-              <span className="entry-n">{e.n}회차</span>
-              <span className="entry-date">{e.date ? fmtDay(e.date) : '—'}</span>
-              <span className="entry-qty">
-                {e.actualQty !== null ? (
-                  <>
-                    {e.actualQty}주{e.actualQty !== e.plannedQty && <span className="warn-text"> / 계획 {e.plannedQty}</span>}
-                  </>
-                ) : (
-                  <span className="muted">{e.plannedQty}주 예정</span>
-                )}
-              </span>
-            </li>
-          ))}
+          {plan.entries.map((e) => {
+            const isNext = plan.status === 'active' && e.actualQty === null && e === plan.entries.find((x) => x.actualQty === null);
+            return (
+              <li key={e.n} className={e.actualQty !== null ? 'done' : isNext ? 'next' : 'todo'}>
+                <span className="entry-n">
+                  Round {e.n}
+                  {e.date && <span className="entry-date">{fmtDay(e.date)}</span>}
+                  {isNext && <span className="entry-date">next</span>}
+                </span>
+                <span className="entry-qty">
+                  {e.actualQty !== null ? (
+                    <>
+                      {shares(e.actualQty)}
+                      {e.actualQty !== e.plannedQty && <span className="warn-text">plan {e.plannedQty}</span>}
+                      <span className="tick" aria-label="Bought">
+                        <IconCheck />
+                      </span>
+                    </>
+                  ) : (
+                    <span className={isNext ? '' : 'muted'}>{shares(e.plannedQty)}</span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
           {isSplit && plan.remainder > 0 && (
-            <li className={plan.remainderDone ? 'done' : ''}>
-              <span className="entry-n">짜투리</span>
-              <span className="entry-date" />
+            <li className={plan.remainderDone ? 'done' : 'todo'}>
+              <span className="entry-n">Leftover (optional)</span>
               <label className="entry-qty">
-                <input type="checkbox" checked={plan.remainderDone} onChange={(e) => setRemainderDone(plan.id, e.target.checked)} />{' '}
-                {plan.remainder}주 (선택)
+                {shares(plan.remainder)}
+                <input type="checkbox" checked={plan.remainderDone} onChange={(e) => setRemainderDone(plan.id, e.target.checked)} />
               </label>
             </li>
           )}
@@ -111,24 +152,25 @@ export function PlanDetailPage({ id }: { id: string }) {
       </section>
 
       {plan.status === 'active' && (
-        <div className="actions">
-          <button className="btn ghost" onClick={() => setDialog('qty')}>
-            수량 변경
-          </button>
-          <button className="btn ghost" onClick={() => setDialog('stop')}>
-            {isSplit ? '중단' : '종료'}
-          </button>
-        </div>
+        <>
+          <div className="actions">
+            <button className="btn ghost" onClick={() => setDialog('qty')}>
+              Change amount
+            </button>
+            <button className="btn ghost" onClick={() => setDialog('stop')}>
+              {isSplit ? 'Stop' : 'End'}
+            </button>
+          </div>
+          <div className="actions-hint">Changing or stopping needs a written reason</div>
+        </>
       )}
-      <div className="actions">
-        <button className="btn ghost danger-text" onClick={() => setDialog('delete')}>
-          일정 삭제
-        </button>
-      </div>
+      <button className="text-btn danger-text" onClick={() => setDialog('delete')}>
+        Delete plan
+      </button>
 
       {logs.length > 0 && (
         <>
-          <h3 className="section-title">이 일정의 기록</h3>
+          <h3 className="section-title">Log for this plan</h3>
           <div className="stack">
             {logs.map((l) => (
               <LogCard key={l.id} l={l} />
@@ -139,9 +181,9 @@ export function PlanDetailPage({ id }: { id: string }) {
 
       {dialog === 'qty' && (
         <ReasonSheet
-          title="수량 변경"
-          description={`지금은 ${isSplit ? '하루' : '한 번에'} ${plan.dailyQty}주입니다.${isSplit ? ' 남은 회차에 적용됩니다.' : ''}`}
-          confirmLabel="변경"
+          title="Change amount"
+          description={`Right now it's ${shares(plan.dailyQty)} ${unit}.${isSplit ? ' The change applies to the remaining rounds.' : ''}`}
+          confirmLabel="Change"
           extraValid={qtyValid}
           onClose={() => setDialog(null)}
           onConfirm={(reason) => {
@@ -150,16 +192,18 @@ export function PlanDetailPage({ id }: { id: string }) {
             setQty('');
           }}
         >
-          <Field label="새 수량">
-            <NumInput value={qty} onChange={setQty} suffix="주" decimal={false} />
+          <Field label="New amount">
+            <NumInput value={qty} onChange={setQty} suffix="shares" decimal={false} />
           </Field>
         </ReasonSheet>
       )}
       {dialog === 'stop' && (
         <ReasonSheet
-          title={isSplit ? '일정 중단' : '일정 종료'}
-          description={isSplit ? `${pr.total}회 중 ${pr.done}회 매수했습니다. 남은 회차는 사지 않습니다.` : '더 이상 오늘 화면에 나오지 않습니다.'}
-          confirmLabel={isSplit ? '중단' : '종료'}
+          title={isSplit ? 'Stop plan' : 'End plan'}
+          description={
+            isSplit ? `You've bought ${pr.done} of ${pr.total} rounds. The remaining rounds won't be bought.` : "It won't show up on Today anymore."
+          }
+          confirmLabel={isSplit ? 'Stop' : 'End'}
           danger={isSplit}
           onClose={() => setDialog(null)}
           onConfirm={(reason) => {
@@ -170,9 +214,9 @@ export function PlanDetailPage({ id }: { id: string }) {
       )}
       {dialog === 'delete' && (
         <ReasonSheet
-          title="일정 삭제"
-          description="일정은 지워지지만, 삭제했다는 기록과 이유는 남습니다."
-          confirmLabel="삭제"
+          title="Delete plan"
+          description="The plan is removed, but the fact that you deleted it and your reason stay in the log."
+          confirmLabel="Delete"
           danger
           onClose={() => setDialog(null)}
           onConfirm={(reason) => {

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { initialState } from './defaults';
+import { initialState, migrateToEnglish } from './defaults';
 import type { AppState } from './types';
 
 const KEY = 'diplog:v1';
@@ -29,7 +29,7 @@ export function setState(update: (s: AppState) => AppState): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    alert('저장하지 못했습니다. 저장 공간을 확인하고, 설정에서 백업을 내보내 두세요.');
+    alert("Couldn't save. Check your storage space and export a backup in Settings.");
   }
   listeners.forEach((l) => l());
 }
@@ -52,7 +52,7 @@ export function validate(data: unknown): AppState | null {
   if (!arrays.every((k) => Array.isArray(d[k]))) return null;
   if (!d.settings || typeof d.settings !== 'object') return null;
   const base = initialState();
-  return { ...base, ...d, settings: { ...base.settings, ...d.settings } } as AppState;
+  return migrateToEnglish({ ...base, ...d, settings: { ...base.settings, ...d.settings } } as AppState);
 }
 
 export function replaceState(next: AppState): void {

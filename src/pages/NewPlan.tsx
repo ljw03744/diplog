@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createPlan, MIN_REASON, planLabel } from '../actions';
 import { calcPlan } from '../calc';
+import { groupLabel, shares } from '../labels';
 import { useNav } from '../nav';
 import { useAppState } from '../store';
 import type { Currency, Rule } from '../types';
@@ -8,9 +9,9 @@ import { Field, NumInput, Page, ReasonInput, Segmented } from '../ui';
 import { fmtMoney, parseNum } from '../util';
 
 export function ruleText(r: Pick<Rule, 'type' | 'percent' | 'days' | 'sharesPerDay'>): string {
-  if (r.type === 'split') return r.days > 1 ? `${r.percent}% · ${r.days}일 분할 (하루 ${+(r.percent / r.days).toFixed(2)}%)` : `${r.percent}% · 하루`;
-  if (r.type === 'signal') return `조건 충족마다 ${r.percent}%`;
-  return `조건 충족마다 ${r.sharesPerDay}주`;
+  if (r.type === 'split') return r.days > 1 ? `${r.percent}% over ${r.days} days (${+(r.percent / r.days).toFixed(2)}%/day)` : `${r.percent}% in 1 day`;
+  if (r.type === 'signal') return `${r.percent}% per signal`;
+  return `${shares(r.sharesPerDay)} per signal`;
 }
 
 export function NewPlanPage({ tickerId }: { tickerId?: string }) {
@@ -71,11 +72,13 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
     nav.reset();
   }
 
+  const priceSuffix = ticker?.currency === 'USD' ? '$' : '₩';
+
   return (
-    <Page title="매매 일정 추가" back="취소">
+    <Page title="New buy plan" back="Cancel">
       <section className="step">
         <h2>
-          <span className="step-n">1</span>종목
+          <span className="step-n">1</span>Ticker
         </h2>
         <div className="chips">
           {s.tickers
@@ -83,11 +86,11 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
             .map((t) => (
               <button key={t.id} className={'chip' + (t.id === tid ? ' on' : '')} onClick={() => pickTicker(t.id)}>
                 {t.symbol}
-                <span className="chip-sub">{t.group}</span>
+                <span className="chip-sub">{groupLabel(t.group)}</span>
               </button>
             ))}
           <button className="chip add" onClick={() => nav.push({ name: 'tickerForm' })}>
-            ＋ 종목 추가
+            ＋ Add ticker
           </button>
         </div>
       </section>
@@ -95,7 +98,7 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
       {ticker && (
         <section className="step">
           <h2>
-            <span className="step-n">2</span>매수 근거
+            <span className="step-n">2</span>Buy signal
           </h2>
           <div className="rule-list">
             {rules.map((r) => (
@@ -104,7 +107,9 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
                 <span className="muted small">{ruleText(r)}</span>
               </button>
             ))}
-            {rules.length === 0 && <div className="muted small">이 종목 그룹({ticker.group})에 맞는 규칙이 없습니다. 설정 → 규칙에서 추가하세요.</div>}
+            {rules.length === 0 && (
+              <div className="muted small">No rules for this group ({groupLabel(ticker.group)}). Add one in Settings → Rules.</div>
+            )}
           </div>
           {rule?.note && <p className="note">{rule.note}</p>}
         </section>
@@ -113,9 +118,9 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
       {ticker && rule && rule.type !== 'fixed' && (
         <section className="step">
           <h2>
-            <span className="step-n">3</span>씨드와 현재가
+            <span className="step-n">3</span>Seed and price
           </h2>
-          <Field label="씨드 (지금 쓸 수 있는 현금)">
+          <Field label="Seed (cash you can use now)">
             <div className="row gap">
               <NumInput value={seed} onChange={setSeed} placeholder="0" />
               <Segmented
@@ -123,18 +128,18 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
                 onChange={setSeedCur}
                 options={[
                   { value: 'USD', label: '$' },
-                  { value: 'KRW', label: '원' },
+                  { value: 'KRW', label: '₩' },
                 ]}
               />
             </div>
           </Field>
           {needFx && (
-            <Field label="환율 (1달러 = ?원)">
-              <NumInput value={fx} onChange={setFx} placeholder="1,400" suffix="원" />
+            <Field label="Exchange rate (₩ per $1)">
+              <NumInput value={fx} onChange={setFx} placeholder="1,400" suffix="₩" />
             </Field>
           )}
-          <Field label={`${ticker.symbol} 현재가`}>
-            <NumInput value={price} onChange={setPrice} placeholder="0" suffix={ticker.currency === 'USD' ? '$' : '원'} />
+          <Field label={`${ticker.symbol} current price`}>
+            <NumInput value={price} onChange={setPrice} placeholder="0" suffix={priceSuffix} />
           </Field>
         </section>
       )}
@@ -142,10 +147,10 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
       {ticker && rule && rule.type === 'fixed' && (
         <section className="step">
           <h2>
-            <span className="step-n">3</span>현재가 (선택)
+            <span className="step-n">3</span>Current price (optional)
           </h2>
-          <Field label={`${ticker.symbol} 현재가`} hint="수량이 정해진 규칙이라 씨드는 필요 없습니다.">
-            <NumInput value={price} onChange={setPrice} placeholder="0" suffix={ticker.currency === 'USD' ? '$' : '원'} />
+          <Field label={`${ticker.symbol} current price`} hint="This rule has a fixed share count, so no seed is needed.">
+            <NumInput value={price} onChange={setPrice} placeholder="0" suffix={priceSuffix} />
           </Field>
         </section>
       )}
@@ -157,10 +162,10 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
           ) : rule.type === 'split' ? (
             <>
               <div className="result-main">
-                하루 <b>{result.dailyQty}주</b> × {Math.max(1, rule.days)}일
+                <b>{shares(result.dailyQty)}</b> a day × {Math.max(1, rule.days)} {Math.max(1, rule.days) === 1 ? 'day' : 'days'}
               </div>
               <div className="result-sub">
-                총 {result.totalQty}주{result.remainder > 0 && <> · 짜투리 {result.remainder}주 (따로)</>}
+                {shares(result.totalQty)} in total{result.remainder > 0 && <> · {result.remainder} left over (separate)</>}
               </div>
               <div className="result-sub muted">
                 {rule.percent}% = {fmtMoney(result.amount, ticker.currency)}
@@ -170,14 +175,14 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
           ) : (
             <>
               <div className="result-main">
-                조건 충족한 날마다 <b>{result.dailyQty}주</b>
+                <b>{shares(result.dailyQty)}</b> on each signal day
               </div>
               {rule.type === 'signal' && (
                 <div className="result-sub muted">
                   {rule.percent}% = {fmtMoney(result.amount, ticker.currency)}
                 </div>
               )}
-              <div className="result-sub muted">끝나는 날이 없습니다. 직접 종료할 때까지 오늘 화면에 남습니다.</div>
+              <div className="result-sub muted">No end date. It stays on Today until you end it.</div>
             </>
           )}
         </section>
@@ -186,7 +191,7 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
       {ticker && rule && result && !result.problem && (
         <section className="step">
           <h2>
-            <span className="step-n">4</span>공통 규칙 확인
+            <span className="step-n">4</span>Check the common rules
           </h2>
           <div className="checks">
             {s.commonChecks.map((c, i) => (
@@ -198,13 +203,13 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
           </div>
           {active.length > 0 && (
             <div className="warn-box">
-              <b>진행 중인 매수가 있습니다.</b>
+              <b>Another buy is in progress.</b>
               <ul>
                 {active.map((p) => (
                   <li key={p.id}>{planLabel(p, s)}</li>
                 ))}
               </ul>
-              <p className="small">규칙: 하나의 매수가 진행 중일 때 다른 매수를 추가로 진행하지 않음. 그래도 시작하려면 이유를 적어 주세요.</p>
+              <p className="small">Rule: don't start another buy while one is in progress. To start anyway, write down why.</p>
               <ReasonInput value={concurrent} onChange={setConcurrent} />
             </div>
           )}
@@ -213,7 +218,7 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
 
       <div className="sticky-foot">
         <button className="btn primary block" disabled={!canStart} onClick={start}>
-          일정 시작
+          Start plan
         </button>
       </div>
     </Page>

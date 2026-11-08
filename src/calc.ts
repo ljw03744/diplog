@@ -39,14 +39,14 @@ export function calcPlan(i: CalcInput): CalcResult {
       totalQty: qty,
       dailyQty: qty,
       remainder: 0,
-      problem: qty > 0 ? null : '하루 수량이 0주입니다.',
+      problem: qty > 0 ? null : 'Shares per day is 0.',
     };
   }
 
   const empty = (problem: string): CalcResult => ({ amount: 0, totalQty: 0, dailyQty: 0, remainder: 0, problem });
-  if (!(i.seed > 0)) return empty('씨드를 입력하세요.');
-  if (!(i.price > 0)) return empty('현재가를 입력하세요.');
-  if (i.seedCurrency !== i.tickerCurrency && !(i.fxRate > 0)) return empty('환율을 입력하세요.');
+  if (!(i.seed > 0)) return empty('Enter your seed.');
+  if (!(i.price > 0)) return empty('Enter the current price.');
+  if (i.seedCurrency !== i.tickerCurrency && !(i.fxRate > 0)) return empty('Enter the exchange rate.');
 
   const amount = convert((i.seed * i.percent) / 100, i.seedCurrency, i.tickerCurrency, i.fxRate);
   const totalQty = Math.floor(amount / i.price + EPS);
@@ -57,7 +57,7 @@ export function calcPlan(i: CalcInput): CalcResult {
       totalQty,
       dailyQty: totalQty,
       remainder: 0,
-      problem: totalQty > 0 ? null : '한 번에 살 수 있는 수량이 0주입니다. 씨드에 비해 가격이 높습니다.',
+      problem: totalQty > 0 ? null : "You can't buy even 1 share per signal. The price is too high for your seed.",
     };
   }
 
@@ -65,8 +65,8 @@ export function calcPlan(i: CalcInput): CalcResult {
   const dailyQty = Math.floor(totalQty / days);
   const remainder = totalQty - dailyQty * days;
   let problem: string | null = null;
-  if (totalQty === 0) problem = '살 수 있는 수량이 0주입니다. 씨드에 비해 가격이 높습니다.';
-  else if (dailyQty === 0) problem = `총 ${totalQty}주라 ${days}일로 나누면 하루 0주입니다.`;
+  if (totalQty === 0) problem = "You can't buy even 1 share. The price is too high for your seed.";
+  else if (dailyQty === 0) problem = `${totalQty} shares in total is 0 a day over ${days} days.`;
   return { amount, totalQty, dailyQty, remainder, problem };
 }
 

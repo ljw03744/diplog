@@ -1,22 +1,30 @@
-// Draws the DipLog app icon (a line that dips and recovers, with a dot at the
-// low point) and writes it as PNG files into public/. No dependencies.
-// Run: npm run icons
+// Draws the DipLog app icon (a trade log page with a line that dips and
+// rebounds into an arrow, a red ring marking the low point) and writes it as
+// PNG files into public/. No dependencies. Run: npm run icons
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-const BG = [15, 92, 74]; // deep green
-const FG = [255, 255, 255];
-const DOT = [255, 196, 77];
+const BLUE = [47, 107, 255]; // #2F6BFF
+const WHITE = [255, 255, 255];
+const PALE = [214, 226, 255]; // #D6E2FF
+const RED = [240, 68, 82]; // #F04452
 
-// Path in a 0..1 box: falls into a dip, then climbs higher than it started.
-const PTS = [
-  [0.16, 0.36],
-  [0.36, 0.5],
-  [0.5, 0.7],
-  [0.64, 0.46],
-  [0.84, 0.28],
+// Everything below is in a 0..100 box. The background fills the whole square;
+// iOS and Android apply their own corner mask.
+const CARD = { x: 24, y: 20, w: 52, h: 62, r: 9 };
+const FOOT = { x: 33, y: 68, w: 22, h: 5, r: 2.5 };
+// The line falls into a dip, then rebounds in one straight stroke; the last two
+// strokes are the arrowhead.
+const LINE = [
+  [[33, 44], [44, 58]],
+  [[44, 58], [67, 35]],
+  [[58, 35], [67, 35]],
+  [[67, 35], [67, 44]],
 ];
-const LOW = PTS[2];
+const LINE_HALF = 3;
+const LOW = [44, 58];
+const RING_R = 5; // ring centre radius
+const RING_HALF = 1.6; // half the ring stroke
 
 function distToSeg(px, py, [ax, ay], [bx, by]) {
   const dx = bx - ax;
@@ -25,12 +33,22 @@ function distToSeg(px, py, [ax, ay], [bx, by]) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-function shade(x, y) {
-  let d = Infinity;
-  for (let i = 0; i < PTS.length - 1; i++) d = Math.min(d, distToSeg(x, y, PTS[i], PTS[i + 1]));
-  if (Math.hypot(x - LOW[0], y - LOW[1]) < 0.075) return DOT;
-  if (d < 0.045) return FG;
-  return BG;
+function inRoundRect(px, py, { x, y, w, h, r }) {
+  const qx = Math.abs(px - (x + w / 2)) - (w / 2 - r);
+  const qy = Math.abs(py - (y + h / 2)) - (h / 2 - r);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= r;
+}
+
+function shade(u, v) {
+  const x = u * 100;
+  const y = v * 100;
+  const dLow = Math.hypot(x - LOW[0], y - LOW[1]);
+  if (dLow <= RING_R - RING_HALF) return WHITE;
+  if (dLow <= RING_R + RING_HALF) return RED;
+  if (LINE.some(([a, b]) => distToSeg(x, y, a, b) <= LINE_HALF)) return BLUE;
+  if (inRoundRect(x, y, FOOT)) return PALE;
+  if (inRoundRect(x, y, CARD)) return WHITE;
+  return BLUE;
 }
 
 function render(size) {

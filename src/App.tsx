@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { NavContext, type Nav, type Route } from './nav';
 import { LogsTab } from './pages/Logs';
 import { OffRulePage, RuleFormPage, RulesPage, SavingsPage, TickerFormPage, TickersPage } from './pages/Manage';
@@ -7,6 +7,7 @@ import { PlanDetailPage } from './pages/PlanDetail';
 import { SettingsTab } from './pages/Settings';
 import { TodayTab } from './pages/Today';
 import { useAppState } from './store';
+import { IconLog, IconPlus, IconSettings, IconToday } from './icons';
 import { Sheet } from './ui';
 
 type Tab = 'today' | 'logs' | 'settings';
@@ -62,14 +63,14 @@ export function App() {
           {tab === 'settings' && <SettingsTab />}
         </main>
 
-        <button className="fab" aria-label="추가" onClick={() => setMenu(true)}>
-          ＋
+        <button className="fab" aria-label="Add" onClick={() => setMenu(true)}>
+          <IconPlus />
         </button>
 
         <nav className="tabbar">
-          <TabButton on={tab === 'today'} onClick={() => setTab('today')} icon="◉" label="오늘" badge={activeCount} />
-          <TabButton on={tab === 'logs'} onClick={() => setTab('logs')} icon="✎" label="기록" />
-          <TabButton on={tab === 'settings'} onClick={() => setTab('settings')} icon="⚙" label="설정" />
+          <TabButton on={tab === 'today'} onClick={() => setTab('today')} icon={<IconToday />} label="Today" badge={activeCount} />
+          <TabButton on={tab === 'logs'} onClick={() => setTab('logs')} icon={<IconLog />} label="Log" />
+          <TabButton on={tab === 'settings'} onClick={() => setTab('settings')} icon={<IconSettings />} label="Settings" />
         </nav>
       </div>
 
@@ -83,16 +84,16 @@ export function App() {
         <Sheet onClose={closeMenu}>
           <div className="menu-sheet">
             <button className="menu-main" onClick={() => push({ name: 'newPlan' })}>
-              <b>매매 일정 추가</b>
-              <span className="muted small">씨드를 넣으면 살 수량을 알려 줍니다</span>
+              <b>New buy plan</b>
+              <span className="muted small">Enter your seed and see how many shares to buy</span>
             </button>
-            <button onClick={() => push({ name: 'offRule' })}>규칙 외 매수 기록</button>
-            <button onClick={() => push({ name: 'savings' })}>{s.settings.savingsSymbol} 적립 기록</button>
-            <button onClick={() => push({ name: 'tickerForm' })}>종목 추가</button>
-            <button onClick={() => push({ name: 'rules' })}>규칙 보기 · 수정</button>
+            <button onClick={() => push({ name: 'offRule' })}>Log an off-rule buy</button>
+            <button onClick={() => push({ name: 'savings' })}>{s.settings.savingsSymbol} savings deposit</button>
+            <button onClick={() => push({ name: 'tickerForm' })}>Add ticker</button>
+            <button onClick={() => push({ name: 'rules' })}>View or edit rules</button>
           </div>
           <button className="btn ghost block" onClick={closeMenu}>
-            닫기
+            Close
           </button>
         </Sheet>
       )}
@@ -100,7 +101,7 @@ export function App() {
   );
 }
 
-function TabButton({ on, onClick, icon, label, badge }: { on: boolean; onClick: () => void; icon: string; label: string; badge?: number }) {
+function TabButton({ on, onClick, icon, label, badge }: { on: boolean; onClick: () => void; icon: ReactNode; label: string; badge?: number }) {
   return (
     <button className={'tabbtn' + (on ? ' on' : '')} onClick={onClick} aria-current={on ? 'page' : undefined}>
       <span className="tabicon" aria-hidden>

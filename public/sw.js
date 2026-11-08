@@ -1,7 +1,7 @@
 // DipLog service worker: lets the app open offline once it has been loaded.
 // Pages: network first (so a new deploy shows up), cached copy when offline.
 // Other files: cached copy first, refreshed in the background.
-const CACHE = 'diplog-v1';
+const CACHE = 'diplog-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

@@ -11,23 +11,24 @@ import {
   saveTicker,
   setSavingsTarget,
 } from '../actions';
+import { accountLabel, groupLabel, shares as sharesText } from '../labels';
 import { useNav } from '../nav';
 import { useAppState } from '../store';
 import type { Account, Currency, Rule, RuleGroup, RuleType, TickerGroup } from '../types';
-import { ConfirmSheet, Empty, Field, NumInput, Page, ReasonInput, ReasonSheet, Segmented } from '../ui';
-import { fmtDay, parseNum, todayStr, uid } from '../util';
+import { Bar, ConfirmSheet, Empty, Field, NumInput, Page, ReasonInput, ReasonSheet, Segmented } from '../ui';
+import { fmtDay, fmtMoney, parseNum, todayStr, uid } from '../util';
 import { ruleText } from './NewPlan';
 
 const TICKER_GROUPS: TickerGroup[] = ['나스닥', '반도체', '개별', '채권'];
 const RULE_GROUPS: RuleGroup[] = ['나스닥', '반도체', '개별', '공통'];
 
-/* ───────── 종목 ───────── */
+/* ───────── Tickers ───────── */
 
 export function TickersPage() {
   const s = useAppState();
   const nav = useNav();
   return (
-    <Page title="종목" back="뒤로" right={<button className="link" onClick={() => nav.push({ name: 'tickerForm' })}>추가</button>}>
+    <Page title="Tickers" back="Back" right={<button className="link" onClick={() => nav.push({ name: 'tickerForm' })}>Add</button>}>
       <nav className="menu card">
         {s.tickers.map((t) => (
           <button key={t.id} onClick={() => nav.push({ name: 'tickerForm', id: t.id })}>
@@ -35,7 +36,7 @@ export function TickersPage() {
               <b>{t.symbol}</b> <span className="muted small">{t.name}</span>
             </span>
             <span className="muted small">
-              {t.group} · {t.account} ›
+              {groupLabel(t.group)} · {accountLabel(t.account)} ›
             </span>
           </button>
         ))}
@@ -62,56 +63,56 @@ export function TickerFormPage({ id }: { id?: string }) {
   }
 
   return (
-    <Page title={old ? '종목 수정' : '종목 추가'} back="취소">
-      <Field label="티커 / 이름">
+    <Page title={old ? 'Edit ticker' : 'Add ticker'} back="Cancel">
+      <Field label="Symbol / name">
         <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="QLD" autoCapitalize="characters" />
       </Field>
-      <Field label="설명 (선택)">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="나스닥100 2배" />
+      <Field label="Description (optional)">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nasdaq-100 2x" />
       </Field>
-      <Field label="그룹" hint="그룹에 맞는 매수 규칙이 연결됩니다.">
-        <Segmented value={group} onChange={setGroup} options={TICKER_GROUPS.map((g) => ({ value: g, label: g }))} />
+      <Field label="Group" hint="Buy rules for this group are linked to the ticker.">
+        <Segmented value={group} onChange={setGroup} options={TICKER_GROUPS.map((g) => ({ value: g, label: groupLabel(g) }))} />
       </Field>
-      <Field label="통화">
+      <Field label="Currency">
         <Segmented
           value={currency}
           onChange={setCurrency}
           options={[
-            { value: 'USD', label: '달러' },
-            { value: 'KRW', label: '원화' },
+            { value: 'USD', label: 'USD' },
+            { value: 'KRW', label: 'KRW' },
           ]}
         />
       </Field>
-      <Field label="계좌">
+      <Field label="Account">
         <Segmented
           value={account}
           onChange={setAccount}
           options={[
-            { value: '직투', label: '직투' },
+            { value: '직투', label: accountLabel('직투') },
             { value: 'ISA', label: 'ISA' },
           ]}
         />
       </Field>
       <button className="btn primary block" disabled={!symbol.trim()} onClick={save}>
-        저장
+        Save
       </button>
       {old && (
         <button className="btn ghost danger-text block" onClick={() => setAsk(true)}>
-          종목 삭제
+          Delete ticker
         </button>
       )}
       {old && ask && used && (
         <ConfirmSheet
-          title="삭제할 수 없습니다"
-          description={`${old.symbol}으로 만든 일정이 있습니다. 지난 일정까지 남아 있어야 기록이 맞게 보입니다.`}
+          title="Can't delete this ticker"
+          description={`There are plans for ${old.symbol}. The ticker has to stay so past plans and records still make sense.`}
           onClose={() => setAsk(false)}
         />
       )}
       {old && ask && !used && (
         <ConfirmSheet
-          title={`${old.symbol} 종목 삭제`}
-          description="이 종목으로 만든 일정이 없어서 바로 지워집니다."
-          confirmLabel="삭제"
+          title={`Delete ${old.symbol}`}
+          description="No plans use this ticker, so it's removed right away."
+          confirmLabel="Delete"
           danger
           onClose={() => setAsk(false)}
           onConfirm={() => {
@@ -124,7 +125,7 @@ export function TickerFormPage({ id }: { id?: string }) {
   );
 }
 
-/* ───────── 규칙 ───────── */
+/* ───────── Rules ───────── */
 
 export function RulesPage() {
   const s = useAppState();
@@ -133,14 +134,14 @@ export function RulesPage() {
   const [checksText, setChecksText] = useState('');
 
   return (
-    <Page title="매수 규칙" back="뒤로" right={<button className="link" onClick={() => nav.push({ name: 'ruleForm' })}>추가</button>}>
-      <p className="muted small">규칙을 고치거나 지우려면 이유를 적어야 하고, 기록에 남습니다.</p>
+    <Page title="Buy rules" back="Back" right={<button className="link" onClick={() => nav.push({ name: 'ruleForm' })}>Add</button>}>
+      <p className="muted small">Editing or deleting a rule needs a reason, and it goes into your log.</p>
       {RULE_GROUPS.map((g) => {
         const rules = s.rules.filter((r) => r.group === g);
         if (rules.length === 0) return null;
         return (
           <section key={g}>
-            <h3 className="section-title">{g}</h3>
+            <h3 className="section-title">{groupLabel(g)}</h3>
             <nav className="menu card">
               {rules.map((r) => (
                 <button key={r.id} onClick={() => nav.push({ name: 'ruleForm', id: r.id })}>
@@ -153,7 +154,7 @@ export function RulesPage() {
         );
       })}
 
-      <h3 className="section-title">공통 규칙 (일정 시작 전 체크)</h3>
+      <h3 className="section-title">Common rules (checked before each plan)</h3>
       <section className="card">
         <ul className="plain">
           {s.commonChecks.map((c, i) => (
@@ -167,15 +168,15 @@ export function RulesPage() {
             setEditChecks(true);
           }}
         >
-          체크리스트 수정
+          Edit checklist
         </button>
       </section>
 
       {editChecks && (
         <ReasonSheet
-          title="공통 규칙 수정"
-          description="한 줄에 하나씩 적어 주세요."
-          confirmLabel="저장"
+          title="Edit common rules"
+          description="One rule per line."
+          confirmLabel="Save"
           onClose={() => setEditChecks(false)}
           onConfirm={(reason) => {
             saveCommonChecks(
@@ -232,55 +233,55 @@ export function RuleFormPage({ id }: { id?: string }) {
   }
 
   return (
-    <Page title={old ? '규칙 수정' : '규칙 추가'} back="취소">
-      <Field label="이름">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="100일선 터치" />
+    <Page title={old ? 'Edit rule' : 'Add rule'} back="Cancel">
+      <Field label="Name">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="100-day MA touch" />
       </Field>
-      <Field label="그룹" hint="'공통'은 모든 종목에서 고를 수 있습니다.">
-        <Segmented value={group} onChange={setGroup} options={RULE_GROUPS.map((g) => ({ value: g, label: g }))} />
+      <Field label="Group" hint="Common rules can be picked for any ticker.">
+        <Segmented value={group} onChange={setGroup} options={RULE_GROUPS.map((g) => ({ value: g, label: groupLabel(g) }))} />
       </Field>
-      <Field label="방식">
+      <Field label="Type">
         <Segmented
           value={type}
           onChange={setType}
           options={[
-            { value: 'split', label: '기간 분할' },
-            { value: 'signal', label: '신호마다 %' },
-            { value: 'fixed', label: '신호마다 N주' },
+            { value: 'split', label: 'Split' },
+            { value: 'signal', label: '% / signal' },
+            { value: 'fixed', label: 'Shares / signal' },
           ]}
         />
       </Field>
       {type !== 'fixed' && (
-        <Field label="씨드 대비 비중">
+        <Field label="Share of seed">
           <NumInput value={percent} onChange={setPercent} suffix="%" />
         </Field>
       )}
       {type === 'split' && (
-        <Field label="나눠 사는 기간" hint={valid ? ruleText(draft) : undefined}>
-          <NumInput value={days} onChange={setDays} suffix="일" decimal={false} />
+        <Field label="Spread over" hint={valid ? ruleText(draft) : undefined}>
+          <NumInput value={days} onChange={setDays} suffix="days" decimal={false} />
         </Field>
       )}
       {type === 'fixed' && (
-        <Field label="한 번에 사는 수량">
-          <NumInput value={shares} onChange={setShares} suffix="주" decimal={false} />
+        <Field label="Shares per buy">
+          <NumInput value={shares} onChange={setShares} suffix="shares" decimal={false} />
         </Field>
       )}
-      <Field label="메모 · 전제 조건 (선택)">
+      <Field label="Note / preconditions (optional)">
         <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
       <button className="btn primary block" disabled={!valid} onClick={onSave}>
-        저장
+        Save
       </button>
       {old && (
         <button className="btn ghost danger-text block" onClick={() => setSheet('delete')}>
-          규칙 삭제
+          Delete rule
         </button>
       )}
       {sheet === 'save' && (
         <ReasonSheet
-          title="규칙 수정"
-          description="이미 시작한 일정에는 영향이 없습니다."
-          confirmLabel="저장"
+          title="Edit rule"
+          description="Plans you've already started won't change."
+          confirmLabel="Save"
           onClose={() => setSheet(null)}
           onConfirm={(reason) => {
             saveRule(draft, reason);
@@ -290,8 +291,8 @@ export function RuleFormPage({ id }: { id?: string }) {
       )}
       {sheet === 'delete' && (
         <ReasonSheet
-          title="규칙 삭제"
-          confirmLabel="삭제"
+          title="Delete rule"
+          confirmLabel="Delete"
           danger
           onClose={() => setSheet(null)}
           onConfirm={(reason) => {
@@ -304,7 +305,7 @@ export function RuleFormPage({ id }: { id?: string }) {
   );
 }
 
-/* ───────── 규칙 외 매수 ───────── */
+/* ───────── Off-rule buy ───────── */
 
 export function OffRulePage() {
   const s = useAppState();
@@ -318,11 +319,9 @@ export function OffRulePage() {
   const ok = !!t && Number.isInteger(q) && q > 0 && reason.trim().length >= MIN_REASON;
 
   return (
-    <Page title="규칙 외 매수" back="취소">
-      <p className="muted small">
-        규칙에 없는 매수도 숨기지 말고 남겨 두세요. 준수율에 반영되고, 나중에 이 이유들을 다시 읽게 됩니다.
-      </p>
-      <Field label="종목">
+    <Page title="Off-rule buy" back="Cancel">
+      <p className="muted small">Log buys outside your rules too, don't hide them. They count toward your rule score, and you'll read these reasons again later.</p>
+      <Field label="Ticker">
         <div className="chips">
           {s.tickers.map((x) => (
             <button key={x.id} className={'chip' + (x.id === tid ? ' on' : '')} onClick={() => setTid(x.id)}>
@@ -331,14 +330,14 @@ export function OffRulePage() {
           ))}
         </div>
       </Field>
-      <Field label="수량">
-        <NumInput value={qty} onChange={setQty} suffix="주" decimal={false} />
+      <Field label="Shares">
+        <NumInput value={qty} onChange={setQty} suffix="shares" decimal={false} />
       </Field>
-      <Field label="체결가 (선택)">
-        <NumInput value={price} onChange={setPrice} suffix={t?.currency === 'KRW' ? '원' : '$'} />
+      <Field label="Fill price (optional)">
+        <NumInput value={price} onChange={setPrice} suffix={t?.currency === 'KRW' ? '₩' : '$'} />
       </Field>
-      <Field label="이유">
-        <ReasonInput value={reason} onChange={setReason} placeholder="왜 규칙 밖에서 샀나요?" />
+      <Field label="Reason">
+        <ReasonInput value={reason} onChange={setReason} placeholder="Why did you buy outside your rules?" />
       </Field>
       <button
         className="btn danger block"
@@ -349,13 +348,13 @@ export function OffRulePage() {
           nav.pop();
         }}
       >
-        기록하기
+        Log it
       </button>
     </Page>
   );
 }
 
-/* ───────── 적립 (BOXX) ───────── */
+/* ───────── Savings (BOXX) ───────── */
 
 export function SavingsPage() {
   const s = useAppState();
@@ -371,34 +370,32 @@ export function SavingsPage() {
   const q = parseNum(qty);
 
   return (
-    <Page title={`${symbol} 적립`} back="뒤로">
+    <Page title={`${symbol} savings`} back="Back">
       <section className="card">
         <div className="row between">
-          <span className="stat-v">
+          <span className="big-num">
             {total}
-            <span className="muted small"> / {goal}주</span>
+            <small className="muted"> / {sharesText(goal)}</small>
           </span>
-          <span className="muted small">{totalKrw.toLocaleString('ko-KR')}원</span>
+          <span className="muted small">{fmtMoney(totalKrw, 'KRW')}</span>
         </div>
-        <div className="bar">
-          <div style={{ width: `${Math.min(100, goal ? (total / goal) * 100 : 0)}%` }} />
-        </div>
+        <Bar value={goal ? total / goal : 0} />
         <p className="muted small">
-          일반 매수에 쓰지 않는 돈. 최소 100주선(가능하면 200주선) 터치 때만 사용하고, 쓴 뒤에는 리밸런싱으로 다시 채운다.
+          Money kept out of regular buys. Use it only on a 100-week MA touch (200-week if possible), then refill it by rebalancing.
         </p>
       </section>
 
-      <h3 className="section-title">적립 기록 추가</h3>
+      <h3 className="section-title">Add a deposit</h3>
       <section className="card">
-        <Field label="날짜">
+        <Field label="Date">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <div className="row gap">
-          <Field label="수량">
-            <NumInput value={qty} onChange={setQty} suffix="주" decimal={false} />
+          <Field label="Shares">
+            <NumInput value={qty} onChange={setQty} suffix="shares" decimal={false} />
           </Field>
-          <Field label="원화 금액 (선택)">
-            <NumInput value={krw} onChange={setKrw} suffix="원" />
+          <Field label="KRW amount (optional)">
+            <NumInput value={krw} onChange={setKrw} suffix="₩" />
           </Field>
         </div>
         <button
@@ -409,13 +406,13 @@ export function SavingsPage() {
             setKrw('');
           }}
         >
-          추가
+          Add
         </button>
       </section>
 
-      <h3 className="section-title">내역</h3>
+      <h3 className="section-title">History</h3>
       {s.savings.length === 0 ? (
-        <Empty>아직 적립 기록이 없습니다.</Empty>
+        <Empty>No deposits yet.</Empty>
       ) : (
         <nav className="menu card">
           {[...s.savings]
@@ -426,9 +423,9 @@ export function SavingsPage() {
                   {fmtDay(x.date)} <span className="muted small">{x.date.slice(0, 4)}</span>
                 </span>
                 <span>
-                  {x.qty}주 {x.krw > 0 && <span className="muted small">{x.krw.toLocaleString('ko-KR')}원</span>}{' '}
+                  {sharesText(x.qty)} {x.krw > 0 && <span className="muted small">{fmtMoney(x.krw, 'KRW')}</span>}{' '}
                   <button className="link small danger-text" onClick={() => setDelId(x.id)}>
-                    삭제
+                    Delete
                   </button>
                 </span>
               </div>
@@ -436,23 +433,23 @@ export function SavingsPage() {
         </nav>
       )}
 
-      <h3 className="section-title">목표</h3>
+      <h3 className="section-title">Goal</h3>
       <section className="card row gap">
-        <NumInput value={target} onChange={setTarget} suffix="주" decimal={false} />
+        <NumInput value={target} onChange={setTarget} suffix="shares" decimal={false} />
         <button
           className="btn ghost"
           disabled={!(parseNum(target) > 0) || parseNum(target) === goal}
           onClick={() => setSavingsTarget(Math.floor(parseNum(target)))}
         >
-          저장
+          Save
         </button>
       </section>
 
       {delId && (
         <ConfirmSheet
-          title="적립 기록 삭제"
-          description="이 적립 기록을 지울까요?"
-          confirmLabel="삭제"
+          title="Delete deposit"
+          description="Remove this deposit from your history?"
+          confirmLabel="Delete"
           danger
           onClose={() => setDelId(null)}
           onConfirm={() => {

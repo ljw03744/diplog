@@ -1,13 +1,13 @@
 {
   "name": "DipLog",
   "short_name": "DipLog",
-  "description": "규칙대로 분할 매수하고, 벗어날 때는 이유를 남기는 매매 일정 기록",
-  "lang": "ko",
+  "description": "Split your buys by your rules, and write down why when you break one.",
+  "lang": "en",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f5f2",
-  "theme_color": "#f4f5f2",
+  "background_color": "#f2f4f6",
+  "theme_color": "#f2f4f6",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },

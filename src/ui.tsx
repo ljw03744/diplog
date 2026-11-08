@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { MIN_REASON } from './actions';
+import { IconBack } from './icons';
 import { useNav } from './nav';
+import type { TickerGroup } from './types';
 
 export function Page({
   title,
   children,
   right,
-  back = '닫기',
+  back = 'Close',
 }: {
   title: string;
   children: ReactNode;
@@ -17,8 +19,8 @@ export function Page({
   return (
     <div className="page">
       <header className="page-head">
-        <button className="link" onClick={nav.pop}>
-          {back}
+        <button className="link" onClick={nav.pop} aria-label={back}>
+          {back === 'Back' ? <IconBack /> : back}
         </button>
         <h1>{title}</h1>
         <div className="page-head-right">{right}</div>
@@ -50,6 +52,53 @@ export function Segmented<T extends string>({
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Underlined tabs */
+export function UnderlineTabs<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="utabs" role="tablist">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role="tab"
+          aria-selected={o.value === value}
+          className={o.value === value ? 'on' : ''}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Ticker circle, colored by group */
+export function Logo({ symbol, group }: { symbol?: string; group?: TickerGroup }) {
+  const text = (symbol ?? '?').slice(0, 4);
+  return (
+    <span className={'logo' + (group ? ` g-${group}` : '')} style={text.length > 3 ? { fontSize: 10 } : undefined} aria-hidden>
+      {text}
+    </span>
+  );
+}
+
+/** Progress bar (0 to 1) */
+export function Bar({ value, thin }: { value: number; thin?: boolean }) {
+  const v = Math.max(0, Math.min(1, value));
+  return (
+    <div className={'bar' + (thin ? ' thin' : '')} role="progressbar" aria-valuenow={Math.round(v * 100)} aria-valuemin={0} aria-valuemax={100}>
+      <div style={{ width: `${v * 100}%` }} />
     </div>
   );
 }
@@ -98,11 +147,11 @@ export function ReasonInput({ value, onChange, placeholder }: { value: string; o
       <textarea
         rows={3}
         value={value}
-        placeholder={placeholder ?? '왜 규칙과 다르게 하나요? 나중에 다시 읽게 됩니다.'}
+        placeholder={placeholder ?? "Why are you going off your rules? You'll read this again later."}
         onChange={(e) => onChange(e.target.value)}
       />
       <div className={'reason-count' + (len >= MIN_REASON ? ' ok' : '')}>
-        {len >= MIN_REASON ? '기록됩니다 · 지울 수 없습니다' : `${MIN_REASON - len}자 더 써 주세요`}
+        {len >= MIN_REASON ? "Goes into your log · can't be deleted" : `${MIN_REASON - len} more characters`}
       </div>
     </div>
   );
@@ -135,12 +184,12 @@ export function ReasonSheet({
       <h2 className="sheet-title">{title}</h2>
       {description && <p className="muted">{description}</p>}
       {children}
-      <Field label="이유">
+      <Field label="Reason">
         <ReasonInput value={reason} onChange={setReason} />
       </Field>
       <div className="row gap">
         <button className="btn ghost grow" onClick={onClose}>
-          취소
+          Cancel
         </button>
         <button className={'btn grow ' + (danger ? 'danger' : 'primary')} disabled={!ok} onClick={() => onConfirm(reason)}>
           {confirmLabel}
@@ -178,7 +227,7 @@ export function ConfirmSheet({
         {confirmLabel && onConfirm ? (
           <>
             <button className="btn ghost grow" onClick={onClose}>
-              취소
+              Cancel
             </button>
             <button className={'btn grow ' + (danger ? 'danger' : 'primary')} onClick={onConfirm}>
               {confirmLabel}
@@ -186,7 +235,7 @@ export function ConfirmSheet({
           </>
         ) : (
           <button className="btn primary grow" onClick={onClose}>
-            확인
+            OK
           </button>
         )}
       </div>

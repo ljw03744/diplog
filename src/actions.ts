@@ -1,4 +1,5 @@
 import { calcPlan, makeEntries } from './calc';
+import { groupLabel } from './labels';
 import { setState, getState } from './store';
 import type { AppState, Currency, LogItem, LogKind, Plan, Rule, Saving, Ticker } from './types';
 import { nowIso, uid } from './util';
@@ -16,7 +17,7 @@ function updatePlan(s: AppState, id: string, f: (p: Plan) => Plan): AppState {
 
 export function planLabel(p: Plan, s: AppState = getState()): string {
   const t = s.tickers.find((x) => x.id === p.tickerId);
-  return `${t?.symbol ?? '삭제된 종목'} · ${p.ruleName}`;
+  return `${t?.symbol ?? 'Deleted ticker'} · ${p.ruleName}`;
 }
 
 export interface NewPlanInput {
@@ -71,7 +72,7 @@ export function createPlan(i: NewPlanInput): string {
         .filter((p) => p.status === 'active')
         .map((p) => planLabel(p, s))
         .join(', ');
-      next = log(next, 'concurrent', planLabel(plan, next), `진행 중: ${others}`, i.concurrentReason, plan.id);
+      next = log(next, 'concurrent', planLabel(plan, next), `In progress: ${others}`, i.concurrentReason, plan.id);
     }
     return next;
   });
@@ -108,7 +109,7 @@ export function checkToday(planId: string, today: string, qty: number, reason: s
       }));
     }
     if (planned !== qty) {
-      next = log(next, 'qty-diff', planLabel(p, s), `${n}회차: 계획 ${planned}주 → 실제 ${qty}주`, reason ?? '', planId);
+      next = log(next, 'qty-diff', planLabel(p, s), `Round ${n}: planned ${planned}, bought ${qty}`, reason ?? '', planId);
     }
     return next;
   });
@@ -140,8 +141,8 @@ export function changeQty(planId: string, newQty: number, reason: string): void 
           }
         : { ...p, dailyQty: newQty },
     );
-    const unit = p.ruleType === 'split' ? '하루' : '한 번에';
-    return log(next, 'qty-change', planLabel(p, s), `${unit} ${p.dailyQty}주 → ${newQty}주`, reason, planId);
+    const unit = p.ruleType === 'split' ? 'per day' : 'per buy';
+    return log(next, 'qty-change', planLabel(p, s), `${p.dailyQty} → ${newQty} shares ${unit}`, reason, planId);
   });
 }
 
@@ -161,7 +162,7 @@ export function stopPlan(planId: string, reason: string): void {
       next,
       isSplit ? 'stop' : 'end',
       planLabel(p, s),
-      isSplit ? `${p.entries.length}회 중 ${done}회에서 중단` : `${done}회 매수 후 종료`,
+      isSplit ? `Stopped after ${done} of ${p.entries.length} rounds` : `Ended after ${done} buys`,
       reason,
       planId,
     );
@@ -174,7 +175,7 @@ export function deletePlan(planId: string, reason: string): void {
     if (!p) return s;
     const done = p.entries.filter((e) => e.actualQty !== null).length;
     const next = { ...s, plans: s.plans.filter((x) => x.id !== planId) };
-    return log(next, 'delete', planLabel(p, s), `일정 삭제 (${done}회 매수했던 일정)`, reason, planId);
+    return log(next, 'delete', planLabel(p, s), `Plan deleted (had ${done} buys)`, reason, planId);
   });
 }
 
@@ -183,8 +184,8 @@ export function setRemainderDone(planId: string, done: boolean): void {
 }
 
 export function addOffRule(label: string, qty: number, price: number | null, currency: Currency, reason: string): void {
-  const priceText = price ? ` @ ${currency === 'USD' ? '$' + price : price.toLocaleString('ko-KR') + '원'}` : '';
-  setState((s) => log(s, 'off-rule', label, `${qty}주${priceText}`, reason));
+  const priceText = price ? ` @ ${currency === 'USD' ? '$' + price : '₩' + price.toLocaleString('en-US')}` : '';
+  setState((s) => log(s, 'off-rule', label, `${qty} ${qty === 1 ? 'share' : 'shares'}${priceText}`, reason));
 }
 
 export function saveTicker(t: Ticker): void {
@@ -199,9 +200,9 @@ export function deleteTicker(id: string): void {
 }
 
 function ruleSummary(r: Rule): string {
-  if (r.type === 'split') return `${r.percent}% / ${r.days}일`;
-  if (r.type === 'signal') return `신호마다 ${r.percent}%`;
-  return `하루 ${r.sharesPerDay}주`;
+  if (r.type === 'split') return `${r.percent}% / ${r.days} days`;
+  if (r.type === 'signal') return `${r.percent}% per signal`;
+  return `${r.sharesPerDay} shares per signal`;
 }
 
 /** 새 규칙은 이유 없이, 기존 규칙 수정은 이유 필수 */
@@ -211,11 +212,11 @@ export function saveRule(r: Rule, reason: string | null): void {
     const next = { ...s, rules: old ? s.rules.map((x) => (x.id === r.id ? r : x)) : [...s.rules, r] };
     if (!old || !reason) return next;
     const changes: string[] = [];
-    if (old.name !== r.name) changes.push(`이름 ${old.name} → ${r.name}`);
+    if (old.name !== r.name) changes.push(`name ${old.name} → ${r.name}`);
     if (ruleSummary(old) !== ruleSummary(r)) changes.push(`${ruleSummary(old)} → ${ruleSummary(r)}`);
-    if (old.group !== r.group) changes.push(`그룹 ${old.group} → ${r.group}`);
-    if (old.note !== r.note) changes.push('메모 수정');
-    return log(next, 'rule-edit', `[${r.group}] ${r.name}`, changes.join(', ') || '변경 없음', reason);
+    if (old.group !== r.group) changes.push(`group ${groupLabel(old.group)} → ${groupLabel(r.group)}`);
+    if (old.note !== r.note) changes.push('note edited');
+    return log(next, 'rule-edit', `[${groupLabel(r.group)}] ${r.name}`, changes.join(', ') || 'no changes', reason);
   });
 }
 
@@ -223,7 +224,7 @@ export function deleteRule(id: string, reason: string): void {
   setState((s) => {
     const r = s.rules.find((x) => x.id === id);
     if (!r) return s;
-    return log({ ...s, rules: s.rules.filter((x) => x.id !== id) }, 'rule-delete', `[${r.group}] ${r.name}`, ruleSummary(r), reason);
+    return log({ ...s, rules: s.rules.filter((x) => x.id !== id) }, 'rule-delete', `[${groupLabel(r.group)}] ${r.name}`, ruleSummary(r), reason);
   });
 }
 
@@ -231,8 +232,8 @@ export function saveCommonChecks(list: string[], reason: string): void {
   setState((s) => {
     const added = list.filter((x) => !s.commonChecks.includes(x));
     const removed = s.commonChecks.filter((x) => !list.includes(x));
-    const detail = [...removed.map((x) => `− ${x}`), ...added.map((x) => `+ ${x}`)].join('\n') || '순서만 변경';
-    return log({ ...s, commonChecks: list }, 'rule-edit', '공통 규칙 체크리스트', detail, reason);
+    const detail = [...removed.map((x) => `− ${x}`), ...added.map((x) => `+ ${x}`)].join('\n') || 'order changed';
+    return log({ ...s, commonChecks: list }, 'rule-edit', 'Common rules checklist', detail, reason);
   });
 }
 

@@ -37,14 +37,14 @@ describe('calcPlan', () => {
 
   it('needs an exchange rate when currencies differ', () => {
     const r = calcPlan({ ...base, seed: 1_000_000, seedCurrency: 'KRW', price: 90, percent: 5, days: 1 });
-    expect(r.problem).toBe('환율을 입력하세요.');
+    expect(r.problem).toBe('Enter the exchange rate.');
   });
 
   it('flags a plan whose daily quantity rounds down to 0', () => {
     const r = calcPlan({ ...base, seed: 2000, price: 100, percent: 15, days: 5 });
     expect(r.totalQty).toBe(3);
     expect(r.dailyQty).toBe(0);
-    expect(r.problem).toContain('하루 0주');
+    expect(r.problem).toContain('0 a day');
   });
 
   it('signal rules buy percent per occurrence', () => {
