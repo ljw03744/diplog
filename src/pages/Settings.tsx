@@ -5,6 +5,7 @@ import { getState, replaceState, useAppState, validate } from '../store';
 import type { AppState } from '../types';
 import { ConfirmSheet } from '../ui';
 import { fmtDateTime, shareOrDownload, todayStr } from '../util';
+import { CashSheet } from './Cash';
 
 async function exportBackup(): Promise<'shared' | 'downloaded' | 'cancelled'> {
   const s = getState();
@@ -20,6 +21,7 @@ export function SettingsTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, setPending] = useState<AppState | null>(null);
+  const [cashOpen, setCashOpen] = useState(false);
 
   async function onExport() {
     const r = await exportBackup();
@@ -79,7 +81,11 @@ export function SettingsTab() {
         <button onClick={() => nav.push({ name: 'savings' })}>
           {s.settings.savingsSymbol} savings <span className="muted">›</span>
         </button>
+        <button onClick={() => setCashOpen(true)}>
+          Cash balance <span className="muted">Update ›</span>
+        </button>
       </nav>
+      {cashOpen && <CashSheet onClose={() => setCashOpen(false)} />}
 
       <p className="muted small center">DipLog · Buy by your rules. When you break one, write down why.</p>
 

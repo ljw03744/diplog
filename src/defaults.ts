@@ -1,9 +1,34 @@
-import type { AppState, Rule, RuleGroup, Ticker } from './types';
+import { ruleGroupLabel, shares } from './labels';
+import type { AppState, LogItem, Rule, RuleGroup, Ticker } from './types';
+import { nowIso, uid } from './util';
 
 const SEMI_PRE = 'Precondition: only when the semiconductor index has broken below its 20-week MA.';
 const BB_NOTE =
   'Below the 200-day MA, after RSI has dropped under 30 at least once: the 5-day MA is at its lowest and price touches the lower Bollinger Band. Buy on every day that meets this.';
-const STOCK_NOTE = 'Swing trades: enter 20% of your cash as the seed. No leveraged ETFs until the 200-day MA breaks.';
+/** 2026-11-21 규칙 변경: 볼밴 하단 매수는 하루 1주가 아니라 비중 3% (금액 기준) */
+const BB_CHANGE = 'Changed Nov 21, 2026: 3% per signal (was 2%). Sized by amount now, not 1 share a day.';
+const COMMON_BB_NOTE = '1 share on each day price touches the lower Bollinger Band while below the 200-day MA.';
+/** 2026-11-22: BB-dip은 살 때마다 그 순간 현금 잔고의 3% */
+const BB_CASH_NOTE = 'Each buy is 3% of your cash balance at that moment, so buys get smaller as cash goes down.';
+const OLD_BB_NAME = 'Lower BB after RSI<30';
+const BB_NAME = 'BB-dip';
+
+/** ETF 규칙을 반도체 종목에 쓸 때의 전제 조건 (예전 반도체 규칙의 메모) */
+const ETF_SEMI_NOTE = 'Semis: only after the semiconductor index has broken below its 20-week MA.';
+
+/**
+ * 기본 규칙 개정 번호.
+ * 2 = 볼밴 하단 3% + 하루 1주 규칙 없앰
+ * 3 = 나스닥·반도체 규칙을 ETF 하나로 합침 (반도체는 200주선만 남김)
+ * 4 = 볼밴 규칙 이름 BB-dip, '씨드' 대신 '현금'
+ */
+export const RULES_REV = 4;
+const OLD_STOCK_NOTE = 'Swing trades: enter 20% of your cash as the seed. No leveraged ETFs until the 200-day MA breaks.';
+const STOCK_NOTE = 'Swing trades: use 20% of your cash. No leveraged ETFs until the 200-day MA breaks.';
+const OLD_200W_NOTE = 'Essentially all-in. Afterwards, keep going with the ETF lower-BB rule.';
+const NOTE_200W = 'Essentially all-in. Afterwards, keep going with the ETF BB-dip rule.';
+
+export const DEFAULT_GROUP_ORDER: RuleGroup[] = ['ETF', '반도체', '개별', '공통'];
 
 function maRules(group: RuleGroup, prefix: string, note = ''): Rule[] {
   const rows: [string, number, number][] = [
@@ -25,20 +50,19 @@ function maRules(group: RuleGroup, prefix: string, note = ''): Rule[] {
     })),
     {
       id: `${prefix}-bb`,
-      name: 'Lower BB after RSI<30',
+      name: BB_NAME,
       group,
       type: 'signal',
-      percent: 2,
+      percent: 3,
       days: 0,
       sharesPerDay: 0,
-      note: [note, BB_NOTE].filter(Boolean).join('\n'),
+      note: [note, BB_NOTE, BB_CASH_NOTE, BB_CHANGE].filter(Boolean).join('\n'),
     },
   ];
 }
 
 export const DEFAULT_RULES: Rule[] = [
-  ...maRules('나스닥', 'ndx'),
-  ...maRules('반도체', 'semi', SEMI_PRE),
+  ...maRules('ETF', 'etf', ETF_SEMI_NOTE),
   {
     id: 'semi-200w',
     name: '200-week MA touch',
@@ -47,19 +71,9 @@ export const DEFAULT_RULES: Rule[] = [
     percent: 70,
     days: 1,
     sharesPerDay: 0,
-    note: 'Essentially all-in. Afterwards, keep going with the lower-BB rule (Lower BB after RSI<30).',
+    note: [SEMI_PRE, NOTE_200W].join('\n'),
   },
   ...maRules('개별', 'stock', STOCK_NOTE).slice(0, 4),
-  {
-    id: 'common-bb-1',
-    name: 'Below 200-day · lower BB · 1 share',
-    group: '공통',
-    type: 'fixed',
-    percent: 0,
-    days: 0,
-    sharesPerDay: 1,
-    note: '1 share on each day price touches the lower Bollinger Band while below the 200-day MA.',
-  },
 ];
 
 export const DEFAULT_TICKERS: Ticker[] = [
@@ -91,9 +105,100 @@ export function initialState(): AppState {
     plans: [],
     logs: [],
     savings: [],
-    settings: { lastBackupAt: null, savingsSymbol: 'BOXX', savingsTarget: 60 },
+    cash: { ISA: null, 직투: null, updatedAt: null },
+    closedDays: [],
+    settings: {
+      lastBackupAt: null,
+      rulesRev: RULES_REV,
+      savingsSymbol: 'BOXX',
+      savingsTarget: 60,
+      ruleGroupOrder: DEFAULT_GROUP_ORDER,
+    },
   };
 }
+
+/* ───────── Default rule revisions ─────────
+ * When the app changes a default rule, data already on the phone is updated once.
+ * Only rules that still look like the old default are touched, and every change
+ * goes into the log like a hand edit would.
+ */
+
+const REV2_REASON = 'Rule change (Nov 21, 2026): lower-BB buys are now 3% per signal by amount, not 1 share a day.';
+
+const REV3_REASON =
+  'Rule change (Nov 22, 2026): Nasdaq and semis rules were nearly the same, so rules are now split into ETF and individual stocks. Semis keeps only the 200-week MA touch.';
+
+/** rev: 저장된 데이터의 개정 번호 (없으면 1) */
+export function migrateRules(s: AppState, rev: number): AppState {
+  if (rev >= RULES_REV) return s;
+  const logs: LogItem[] = [];
+  const at = nowIso();
+  const addLog = (kind: 'rule-edit' | 'rule-delete', label: string, detail: string, reason: string) =>
+    logs.push({ id: uid(), at, kind, planId: null, label, detail, reason });
+  // 예전 데이터에는 '나스닥' 같은 그룹 값이 남아 있을 수 있다
+  const groupOf = (r: Rule) => r.group as string;
+  let rules = s.rules;
+
+  if (rev < 2) {
+    rules = rules.flatMap((r): Rule[] => {
+      const label = `[${ruleGroupLabel(r.group)}] ${r.name}`;
+      if ((r.id === 'ndx-bb' || r.id === 'semi-bb') && r.type === 'signal' && r.percent === 2) {
+        addLog('rule-edit', label, '2% per signal → 3% per signal, note edited', REV2_REASON);
+        return [{ ...r, percent: 3, note: [r.note.trim(), BB_CHANGE].filter(Boolean).join('\n') }];
+      }
+      if (r.id === 'common-bb-1' && r.type === 'fixed') {
+        addLog('rule-delete', label, `${shares(r.sharesPerDay)} per signal (replaced by the 3% lower-BB rule)`, REV2_REASON);
+        return [];
+      }
+      return [r];
+    });
+  }
+
+  if (rev < 3) {
+    const before = rules;
+    const same = (a: Rule, b: Rule | undefined) =>
+      !!b && a.type === b.type && a.percent === b.percent && a.days === b.days && a.sharesPerDay === b.sharesPerDay;
+    const removed: string[] = [];
+    rules = before.flatMap((r): Rule[] => {
+      if (groupOf(r) === '나스닥') {
+        const note = r.id.startsWith('ndx-') && !r.note.includes(ETF_SEMI_NOTE) ? [r.note.trim(), ETF_SEMI_NOTE].filter(Boolean).join('\n') : r.note;
+        return [{ ...r, group: 'ETF', note }];
+      }
+      // 나스닥 규칙과 똑같은 기본 반도체 규칙은 ETF 규칙과 겹치므로 뺀다. 직접 바꾼 것은 '반도체만'으로 남긴다
+      if (groupOf(r) === '반도체' && /^semi-(\d|bb$)/.test(r.id) && same(r, before.find((x) => x.id === r.id.replace('semi-', 'ndx-')))) {
+        removed.push(r.name);
+        return [];
+      }
+      return [r];
+    });
+    const changed = before.some((r) => groupOf(r) === '나스닥') || removed.length > 0;
+    if (changed) {
+      const detail = ['Nasdaq rules → ETF (used for Nasdaq and semis ETFs)'];
+      if (removed.length) detail.push(`Removed duplicate semis rules: ${removed.join(', ')}`);
+      addLog('rule-edit', 'Rule groups', detail.join('\n'), REV3_REASON);
+    }
+  }
+
+  let plans = s.plans;
+  if (rev < 4) {
+    rules = rules.map((r) => {
+      let next = r;
+      if (r.type === 'signal' && r.name === OLD_BB_NAME) {
+        addLog('rule-edit', `[${ruleGroupLabel(r.group)}] ${BB_NAME}`, `name ${OLD_BB_NAME} → ${BB_NAME}, note edited`, REV4_REASON);
+        next = { ...r, name: BB_NAME, note: [r.note.trim(), BB_CASH_NOTE].filter(Boolean).join('\n') };
+      }
+      // 메모 속 '씨드' 표현을 '현금'으로
+      const note = next.note.replace(OLD_STOCK_NOTE, STOCK_NOTE).replace(OLD_200W_NOTE, NOTE_200W);
+      return note === next.note ? next : { ...next, note };
+    });
+    plans = plans.map((p) => (p.ruleType === 'signal' && p.ruleName === OLD_BB_NAME ? { ...p, ruleName: BB_NAME } : p));
+  }
+
+  return { ...s, rules, plans, logs: [...logs.reverse(), ...s.logs], settings: { ...s.settings, rulesRev: RULES_REV } };
+}
+
+const REV4_REASON =
+  'Rule change (Nov 22, 2026): renamed to BB-dip. Each buy is now 3% of the cash balance at that moment, not a fixed amount.';
 
 /* ───────── Korean → English migration ─────────
  * The app used to ship Korean defaults. Default rules, checklist items, ticker
@@ -123,7 +228,7 @@ const NOTE_KO_EN: Record<string, string> = {
   [`${KO_SEMI_PRE}\n${KO_BB_NOTE}`]: `${SEMI_PRE}\n${BB_NOTE}`,
   [KO_STOCK_NOTE]: STOCK_NOTE,
   '사실상 전 재산. 이후 볼밴 규칙(RSI<30 이후 볼밴 하단)을 이어서 실시.': DEFAULT_RULES.find((r) => r.id === 'semi-200w')!.note,
-  '200일 이평선 밑에서 볼린저 밴드 하단 터치한 날 1주.': DEFAULT_RULES.find((r) => r.id === 'common-bb-1')!.note,
+  '200일 이평선 밑에서 볼린저 밴드 하단 터치한 날 1주.': COMMON_BB_NOTE,
 };
 
 const CHECK_KO_EN: Record<string, string> = {

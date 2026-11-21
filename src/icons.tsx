@@ -53,3 +53,15 @@ export const IconSpark = () => (
     <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" />
   </svg>
 );
+
+export const IconUp = () => (
+  <svg {...base}>
+    <path d="M6 15l6-6 6 6" />
+  </svg>
+);
+
+export const IconDown = () => (
+  <svg {...base}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);

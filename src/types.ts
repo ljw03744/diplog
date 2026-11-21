@@ -1,7 +1,15 @@
 export type Currency = 'USD' | 'KRW';
 export type Account = '직투' | 'ISA';
 export type TickerGroup = '나스닥' | '반도체' | '개별' | '채권';
-export type RuleGroup = TickerGroup | '공통';
+/**
+ * ETF:  나스닥·반도체 레버리지 ETF 공통 규칙
+ * 반도체: 반도체 종목에만 (200주선 터치)
+ * 개별: 개별주
+ * 공통: 모든 종목 (예전 데이터 호환용, 새로 만들지 않음)
+ */
+export type RuleGroup = 'ETF' | '반도체' | '개별' | '공통';
+/** 국장(KRX) / 미장 */
+export type Market = 'KR' | 'US';
 
 /**
  * split:  비중 % 를 N일에 나눠 매수 (예: 100일선 → 20% / 5일)
@@ -41,7 +49,20 @@ export interface Entry {
   /** 체결한 날짜 (YYYY-MM-DD). 아직이면 null */
   date: string | null;
   actualQty: number | null;
+  /** 체크할 때 입력한 가격 (종목 통화). 예전 기록에는 없음 */
+  price?: number | null;
+  /** 실제로 쓴 금액 = actualQty × price (종목 통화) */
+  cost?: number | null;
+  /** 이 체크로 계좌 현금에서 뺀 금액 (계좌 통화). 체크 취소 때 되돌린다 */
+  cashDeducted?: { account: Account; amount: number } | null;
+  checkedAt?: string | null;
 }
+
+/**
+ * amount: 금액 기준. 회차마다 그날 가격을 입력하면 살 수량이 나온다 (새 일정)
+ * shares: 수량 기준. 만들 때 정한 수량대로 산다 (고정 수량, 예전 일정)
+ */
+export type Sizing = 'amount' | 'shares';
 
 export type PlanStatus = 'active' | 'done' | 'stopped';
 
@@ -52,6 +73,8 @@ export interface Plan {
   /** 만든 시점의 규칙 사본. 규칙이 나중에 바뀌어도 이 일정은 그대로 */
   ruleName: string;
   ruleType: RuleType;
+  /** 없으면 'shares' (예전 일정) */
+  sizing?: Sizing;
   percent: number;
   days: number;
   seed: number;
@@ -105,8 +128,26 @@ export interface Saving {
 
 export interface Settings {
   lastBackupAt: string | null;
+  /** 기본 규칙 개정 번호. 앱이 기본 규칙을 바꾸면 올라간다 */
+  rulesRev: number;
   savingsSymbol: string;
   savingsTarget: number;
+  /** 규칙 화면·일정 추가 화면에서 규칙 그룹을 보여 주는 순서 */
+  ruleGroupOrder: RuleGroup[];
+}
+
+/** 평일 휴장일 (사용자가 직접 표시) */
+export interface ClosedDay {
+  date: string;
+  market: Market;
+}
+
+/** 계좌별 보유 현금. ISA는 원화, 직투는 달러. 입력한 적 없으면 null */
+export interface Cash {
+  ISA: number | null;
+  직투: number | null;
+  /** 사용자가 실제 잔고로 마지막에 맞춘 시각 */
+  updatedAt: string | null;
 }
 
 export interface AppState {
@@ -118,5 +159,7 @@ export interface AppState {
   plans: Plan[];
   logs: LogItem[];
   savings: Saving[];
+  cash: Cash;
+  closedDays: ClosedDay[];
   settings: Settings;
 }

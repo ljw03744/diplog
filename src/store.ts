@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { initialState, migrateToEnglish } from './defaults';
+import { initialState, migrateRules, migrateToEnglish } from './defaults';
 import type { AppState } from './types';
 
 const KEY = 'diplog:v1';
@@ -9,7 +9,11 @@ function load(): AppState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = validate(JSON.parse(raw));
-      if (parsed) return parsed;
+      if (parsed) {
+        // 규칙 개정 같은 이전 작업 결과를 바로 저장해 두어, 다음에 다시 하지 않게 한다
+        localStorage.setItem(KEY, JSON.stringify(parsed));
+        return parsed;
+      }
     }
   } catch {
     /* 저장소를 못 쓰면 기본값으로 시작 */
@@ -52,7 +56,10 @@ export function validate(data: unknown): AppState | null {
   if (!arrays.every((k) => Array.isArray(d[k]))) return null;
   if (!d.settings || typeof d.settings !== 'object') return null;
   const base = initialState();
-  return migrateToEnglish({ ...base, ...d, settings: { ...base.settings, ...d.settings } } as AppState);
+  const rev = typeof d.settings.rulesRev === 'number' ? d.settings.rulesRev : 1;
+  const cash = d.cash && typeof d.cash === 'object' ? { ...base.cash, ...d.cash } : base.cash;
+  const merged = { ...base, ...d, cash, settings: { ...base.settings, ...d.settings } } as AppState;
+  return migrateRules(migrateToEnglish(merged), rev);
 }
 
 export function replaceState(next: AppState): void {

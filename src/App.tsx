@@ -85,9 +85,9 @@ export function App() {
           <div className="menu-sheet">
             <button className="menu-main" onClick={() => push({ name: 'newPlan' })}>
               <b>New buy plan</b>
-              <span className="muted small">Enter your seed and see how many shares to buy</span>
+              <span className="muted small">Pick a signal and see how much to buy</span>
             </button>
-            <button onClick={() => push({ name: 'offRule' })}>Log an off-rule buy</button>
+            <button onClick={() => push({ name: 'offRule' })}>Log an unplanned buy</button>
             <button onClick={() => push({ name: 'savings' })}>{s.settings.savingsSymbol} savings deposit</button>
             <button onClick={() => push({ name: 'tickerForm' })}>Add ticker</button>
             <button onClick={() => push({ name: 'rules' })}>View or edit rules</button>

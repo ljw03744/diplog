@@ -6,12 +6,16 @@ import {
   deleteSaving,
   deleteTicker,
   MIN_REASON,
+  moveRule,
+  moveRuleGroup,
+  onlyRenamed,
   saveCommonChecks,
   saveRule,
   saveTicker,
   setSavingsTarget,
 } from '../actions';
-import { accountLabel, groupLabel, shares as sharesText } from '../labels';
+import { IconDown, IconUp } from '../icons';
+import { accountLabel, groupLabel, ruleGroupLabel, shares as sharesText } from '../labels';
 import { useNav } from '../nav';
 import { useAppState } from '../store';
 import type { Account, Currency, Rule, RuleGroup, RuleType, TickerGroup } from '../types';
@@ -20,7 +24,28 @@ import { fmtDay, fmtMoney, parseNum, todayStr, uid } from '../util';
 import { ruleText } from './NewPlan';
 
 const TICKER_GROUPS: TickerGroup[] = ['나스닥', '반도체', '개별', '채권'];
-const RULE_GROUPS: RuleGroup[] = ['나스닥', '반도체', '개별', '공통'];
+/** 새 규칙에 고를 수 있는 그룹. '공통'은 예전 데이터에만 남아 있다 */
+const RULE_GROUPS: RuleGroup[] = ['ETF', '반도체', '개별'];
+
+const RULE_GROUP_HINT: Record<RuleGroup, string> = {
+  ETF: 'Used for Nasdaq and semis ETFs.',
+  반도체: 'Only for semis tickers.',
+  개별: 'Only for individual stocks.',
+  공통: 'Can be picked for any ticker.',
+};
+
+function MoveButtons({ onUp, onDown, label }: { onUp?: () => void; onDown?: () => void; label: string }) {
+  return (
+    <span className="move-btns">
+      <button aria-label={`Move ${label} up`} disabled={!onUp} onClick={onUp}>
+        <IconUp />
+      </button>
+      <button aria-label={`Move ${label} down`} disabled={!onDown} onClick={onDown}>
+        <IconDown />
+      </button>
+    </span>
+  );
+}
 
 /* ───────── Tickers ───────── */
 
@@ -132,29 +157,76 @@ export function RulesPage() {
   const nav = useNav();
   const [editChecks, setEditChecks] = useState(false);
   const [checksText, setChecksText] = useState('');
+  const [reorder, setReorder] = useState(false);
+
+  // 저장된 그룹 순서대로, 규칙이 있는 그룹만
+  const present = [...new Set(s.rules.map((r) => r.group))];
+  const groups = [...s.settings.ruleGroupOrder.filter((g) => present.includes(g)), ...present.filter((g) => !s.settings.ruleGroupOrder.includes(g))];
 
   return (
-    <Page title="Buy rules" back="Back" right={<button className="link" onClick={() => nav.push({ name: 'ruleForm' })}>Add</button>}>
-      <p className="muted small">Editing or deleting a rule needs a reason, and it goes into your log.</p>
-      {RULE_GROUPS.map((g) => {
+    <Page
+      title="Buy rules"
+      back="Back"
+      right={
+        reorder ? (
+          <button className="link" onClick={() => setReorder(false)}>
+            Done
+          </button>
+        ) : (
+          <button className="link" onClick={() => nav.push({ name: 'ruleForm' })}>
+            Add
+          </button>
+        )
+      }
+    >
+      {reorder ? (
+        <p className="muted small">Move groups and rules with the arrows. The order is also used when you pick a rule for a new plan.</p>
+      ) : (
+        <div className="row between gap">
+          <p className="muted small">Changing how a rule buys, or deleting it, needs a reason. Renaming doesn't.</p>
+          <button className="btn ghost sm" onClick={() => setReorder(true)}>
+            Edit order
+          </button>
+        </div>
+      )}
+      {groups.map((g, gi) => {
         const rules = s.rules.filter((r) => r.group === g);
-        if (rules.length === 0) return null;
         return (
           <section key={g}>
-            <h3 className="section-title">{groupLabel(g)}</h3>
+            <div className="section-row">
+              <h3 className="section-title">{ruleGroupLabel(g)}</h3>
+              {reorder && (
+                <MoveButtons
+                  label={ruleGroupLabel(g)}
+                  onUp={gi > 0 ? () => moveRuleGroup(g, -1, groups) : undefined}
+                  onDown={gi < groups.length - 1 ? () => moveRuleGroup(g, 1, groups) : undefined}
+                />
+              )}
+            </div>
             <nav className="menu card">
-              {rules.map((r) => (
-                <button key={r.id} onClick={() => nav.push({ name: 'ruleForm', id: r.id })}>
-                  <span>{r.name}</span>
-                  <span className="muted small">{ruleText(r)} ›</span>
-                </button>
-              ))}
+              {rules.map((r, i) =>
+                reorder ? (
+                  <div key={r.id} className="menu-row">
+                    <span>{r.name}</span>
+                    <MoveButtons
+                      label={r.name}
+                      onUp={i > 0 ? () => moveRule(r.id, -1) : undefined}
+                      onDown={i < rules.length - 1 ? () => moveRule(r.id, 1) : undefined}
+                    />
+                  </div>
+                ) : (
+                  <button key={r.id} onClick={() => nav.push({ name: 'ruleForm', id: r.id })}>
+                    <span>{r.name}</span>
+                    <span className="muted small">{ruleText(r)} ›</span>
+                  </button>
+                ),
+              )}
             </nav>
           </section>
         );
       })}
 
-      <h3 className="section-title">Common rules (checked before each plan)</h3>
+      <h3 className="section-title">Checklist before each plan</h3>
       <section className="card">
         <ul className="plain">
           {s.commonChecks.map((c, i) => (
@@ -174,7 +246,7 @@ export function RulesPage() {
 
       {editChecks && (
         <ReasonSheet
-          title="Edit common rules"
+          title="Edit checklist"
           description="One rule per line."
           confirmLabel="Save"
           onClose={() => setEditChecks(false)}
@@ -201,7 +273,7 @@ export function RuleFormPage({ id }: { id?: string }) {
   const nav = useNav();
   const old = s.rules.find((r) => r.id === id);
   const [name, setName] = useState(old?.name ?? '');
-  const [group, setGroup] = useState<RuleGroup>(old?.group ?? '나스닥');
+  const [group, setGroup] = useState<RuleGroup>(old?.group ?? 'ETF');
   const [type, setType] = useState<RuleType>(old?.type ?? 'split');
   const [percent, setPercent] = useState(old ? String(old.percent) : '');
   const [days, setDays] = useState(old ? String(old.days || 5) : '5');
@@ -217,19 +289,22 @@ export function RuleFormPage({ id }: { id?: string }) {
     percent: type === 'fixed' ? 0 : parseNum(percent),
     days: type === 'split' ? Math.floor(parseNum(days)) : 0,
     sharesPerDay: type === 'fixed' ? Math.floor(parseNum(shares)) : 0,
-    note: note.trim(),
+    // 고치지 않은 메모는 그대로 두어야 '이름만 바뀜'을 바르게 알아본다
+    note: old && note.trim() === old.note.trim() ? old.note : note.trim(),
   };
   const valid =
     !!draft.name &&
     (type === 'fixed' ? draft.sharesPerDay > 0 : draft.percent > 0 && draft.percent <= 100) &&
     (type !== 'split' || draft.days >= 1);
 
+  const unchanged = !!old && JSON.stringify(old) === JSON.stringify(draft);
+
   function onSave() {
-    if (old) setSheet('save');
-    else {
-      saveRule(draft, null);
+    // 새 규칙, 바뀐 게 없음, 이름만 바꿈 → 이유 없이 저장
+    if (!old || unchanged || onlyRenamed(old, draft)) {
+      if (!unchanged) saveRule(draft, null);
       nav.pop();
-    }
+    } else setSheet('save');
   }
 
   return (
@@ -237,22 +312,26 @@ export function RuleFormPage({ id }: { id?: string }) {
       <Field label="Name">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="100-day MA touch" />
       </Field>
-      <Field label="Group" hint="Common rules can be picked for any ticker.">
-        <Segmented value={group} onChange={setGroup} options={RULE_GROUPS.map((g) => ({ value: g, label: groupLabel(g) }))} />
+      <Field label="Group" hint={RULE_GROUP_HINT[group]}>
+        <Segmented
+          value={group}
+          onChange={setGroup}
+          options={(RULE_GROUPS.includes(group) ? RULE_GROUPS : [...RULE_GROUPS, group]).map((g) => ({ value: g, label: ruleGroupLabel(g) }))}
+        />
       </Field>
       <Field label="Type">
         <Segmented
           value={type}
           onChange={setType}
           options={[
-            { value: 'split', label: 'Split' },
+            { value: 'split', label: 'Scale-in' },
             { value: 'signal', label: '% / signal' },
             { value: 'fixed', label: 'Shares / signal' },
           ]}
         />
       </Field>
       {type !== 'fixed' && (
-        <Field label="Share of seed">
+        <Field label="% of cash">
           <NumInput value={percent} onChange={setPercent} suffix="%" />
         </Field>
       )}
@@ -305,7 +384,7 @@ export function RuleFormPage({ id }: { id?: string }) {
   );
 }
 
-/* ───────── Off-rule buy ───────── */
+/* ───────── Unplanned buy ───────── */
 
 export function OffRulePage() {
   const s = useAppState();
@@ -319,7 +398,7 @@ export function OffRulePage() {
   const ok = !!t && Number.isInteger(q) && q > 0 && reason.trim().length >= MIN_REASON;
 
   return (
-    <Page title="Off-rule buy" back="Cancel">
+    <Page title="Unplanned buy" back="Cancel">
       <p className="muted small">Log buys outside your rules too, don't hide them. They count toward your rule score, and you'll read these reasons again later.</p>
       <Field label="Ticker">
         <div className="chips">

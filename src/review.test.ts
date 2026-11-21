@@ -74,7 +74,7 @@ describe('buildReview', () => {
     expect(md).toContain('# DipLog trade review request');
     expect(md).toContain("Don't give investment advice");
     expect(md).toContain('Rule adherence: 33%');
-    expect(md).toContain('[Nasdaq] 100-day MA touch: split, 20% of seed spread over 5 days');
+    expect(md).toContain('[ETF] 100-day MA touch: scale-in, 20% of cash over 5 days');
     expect(md).toContain('- Reason: 실적 발표 전에 / 오를 것 같아서');
     expect(md).toContain('Different amount · QLD');
     expect(md).not.toContain('TSLA');
@@ -86,7 +86,7 @@ describe('buildReview', () => {
     s.plans = [];
     const md = buildReview(s, 90, NOW);
     expect(md).toContain('Rule adherence: no data');
-    expect(md).toContain('## Off-rule buys (0)\nNone');
+    expect(md).toContain('## Unplanned buys (0)\nNone');
   });
 });
 

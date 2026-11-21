@@ -72,11 +72,11 @@ export function LogsTab() {
       <section className="card gauge-card">
         <div className="card-label">Overall rule adherence</div>
         <Gauge value={c.rate} label={rateLabel} />
-        <div className="gauge-sub">{c.total ? `On plan ${c.asPlanned} of ${c.total} buys` : 'No buys checked yet'}</div>
+        <div className="gauge-sub">{c.total ? `${c.asPlanned} of ${c.total} buys as planned` : 'No buys checked yet'}</div>
         <div className="gauge-stats">
           <div>
             <b style={{ color: offRule ? 'var(--buy)' : undefined }}>{offRule}</b>
-            <span>Off-rule buys</span>
+            <span>Unplanned buys</span>
           </div>
           <div>
             <b>{changes}</b>
@@ -94,7 +94,7 @@ export function LogsTab() {
         options={[
           { value: 'all', label: 'All' },
           { value: 'change', label: 'Changes' },
-          { value: 'off', label: 'Off-rule' },
+          { value: 'off', label: 'Unplanned' },
         ]}
       />
       {list.length === 0 ? (
@@ -144,7 +144,7 @@ function ReviewCard({ hasLogs }: { hasLogs: boolean }) {
         <IconSpark />
         Review with Claude
       </h2>
-      <p>Bundles your off-rule buys and deviation reasons into a request asking Claude to find repeating patterns and ways to improve. It only leaves your phone when you copy or send it.</p>
+      <p>Bundles your unplanned buys and deviation reasons into a request asking Claude to find repeating patterns and ways to improve. It only leaves your phone when you copy or send it.</p>
       <Segmented
         value={String(range)}
         onChange={(v) => {
@@ -157,7 +157,7 @@ function ReviewCard({ hasLogs }: { hasLogs: boolean }) {
         ]}
       />
       <div className="muted small">
-        {st.offRule.length} off-rule · {st.others.length} other {st.others.length === 1 ? 'deviation' : 'deviations'}
+        {st.offRule.length} unplanned · {st.others.length} other {st.others.length === 1 ? 'deviation' : 'deviations'}
       </div>
       <div className="row gap">
         <button className="btn primary grow" disabled={count === 0} onClick={onCopy}>

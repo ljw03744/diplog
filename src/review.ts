@@ -1,6 +1,6 @@
 // Turns off-rule buys and deviation logs into a Markdown document to hand to Claude.
 // Nothing leaves the phone on its own: only when the user copies or shares it.
-import { groupLabel } from './labels';
+import { ruleGroupLabel } from './labels';
 import type { AppState, LogItem, LogKind, Rule } from './types';
 import { fmtDate, fmtDateTime } from './util';
 
@@ -11,7 +11,7 @@ export const KIND_LABEL: Record<LogKind, string> = {
   end: 'Ended',
   delete: 'Deleted',
   concurrent: 'Overlapping buy',
-  'off-rule': 'Off-rule buy',
+  'off-rule': 'Unplanned buy',
   'rule-edit': 'Rule edited',
   'rule-delete': 'Rule deleted',
 };
@@ -60,12 +60,12 @@ function oneLine(text: string): string {
 function ruleLine(r: Rule): string {
   const how =
     r.type === 'split'
-      ? `split, ${r.percent}% of seed spread over ${r.days} ${r.days === 1 ? 'day' : 'days'}`
+      ? `scale-in, ${r.percent}% of cash over ${r.days} ${r.days === 1 ? 'day' : 'days'}`
       : r.type === 'signal'
-        ? `${r.percent}% of seed on each signal`
+        ? `${r.percent}% of the cash balance on each signal`
         : `${r.sharesPerDay} ${r.sharesPerDay === 1 ? 'share' : 'shares'} on each signal day`;
   const note = r.note.trim() ? ` (note: ${oneLine(r.note)})` : '';
-  return `- [${groupLabel(r.group)}] ${r.name}: ${how}${note}`;
+  return `- [${ruleGroupLabel(r.group)}] ${r.name}: ${how}${note}`;
 }
 
 function logBlock(l: LogItem, withKind: boolean): string {
@@ -94,7 +94,7 @@ export function buildReview(s: AppState, range: ReviewRange, now: Date = new Dat
     '',
     "Below is the trading log I keep in the DipLog app. I try to split my buys according to rules I set in advance, and every time I break a rule I write down why. Please read it and analyze the following:",
     '',
-    '1. Repeating patterns in my off-rule buys and rule breaks (when, in what situations, with what emotions or excuses)',
+    '1. Repeating patterns in my unplanned buys and rule breaks (when, in what situations, with what emotions or excuses)',
     '2. Words and phrases that keep showing up in my reasons, and the motives that might be behind them',
     "3. Which deviations look reasonable and which don't, and why you think so",
     '4. Three concrete suggestions to help me stick to my rules (features or checklists for the app are welcome)',
@@ -107,8 +107,8 @@ export function buildReview(s: AppState, range: ReviewRange, now: Date = new Dat
     since ? `${fmtDate(since.toISOString())} – ${fmtDate(now.toISOString())} (last ${range} days)` : `All records (through ${fmtDate(now.toISOString())})`,
     '',
     '## Summary',
-    `- Rule adherence: ${rate} (${st.asPlanned} of ${st.total} buys on plan, off-rule buys included)`,
-    `- Off-rule buys: ${st.offRule.length}`,
+    `- Rule adherence: ${rate} (${st.asPlanned} of ${st.total} buys as planned, unplanned buys included)`,
+    `- Unplanned buys: ${st.offRule.length}`,
     `- Other deviations: ${st.others.length}${counts ? ` (${counts})` : ''}`,
     '',
     '## My buy rules',
@@ -116,7 +116,7 @@ export function buildReview(s: AppState, range: ReviewRange, now: Date = new Dat
   if (s.commonChecks.length) out.push(`- Common: ${s.commonChecks.join(' / ')}`);
   out.push(...s.rules.map(ruleLine));
 
-  out.push('', `## Off-rule buys (${st.offRule.length})`);
+  out.push('', `## Unplanned buys (${st.offRule.length})`);
   out.push(st.offRule.length ? st.offRule.map((l) => logBlock(l, false)).join('\n\n') : 'None');
 
   out.push('', `## Other deviations (${st.others.length})`);
