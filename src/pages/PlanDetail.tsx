@@ -6,7 +6,7 @@ import { shares } from '../labels';
 import { useNav } from '../nav';
 import { useAppState } from '../store';
 import { Bar, Empty, Field, NumInput, Page, ReasonSheet } from '../ui';
-import { fmtDate, fmtDay, fmtMoney, parseNum } from '../util';
+import { fmtDate, fmtMoney, fmtWeekDay, parseNum } from '../util';
 import { LogCard } from './Logs';
 
 type Dialog = 'qty' | 'stop' | 'delete' | null;
@@ -156,7 +156,7 @@ export function PlanDetailPage({ id }: { id: string }) {
               <li key={e.n} className={e.actualQty !== null ? 'done' : isNext ? 'next' : 'todo'}>
                 <span className="entry-n">
                   Tranche {e.n}
-                  {e.date && <span className="entry-date">{fmtDay(e.date)}</span>}
+                  {e.date && <span className="entry-date">{fmtWeekDay(e.date)}</span>}
                   {isNext && <span className="entry-date">next</span>}
                 </span>
                 <span className="entry-qty">

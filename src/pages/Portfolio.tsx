@@ -6,7 +6,7 @@ import { toKrw, trades, weights, type Slice, type Trade } from '../portfolio';
 import { useAppState } from '../store';
 import type { AppState } from '../types';
 import { Empty, Field, Logo, NumInput, Sheet } from '../ui';
-import { daysBetween, fmtDay, fmtKst, fmtMoney, KST, parseNum, ymdIn } from '../util';
+import { daysBetween, fmtMoney, fmtTradeDate, fmtTradeTime, parseNum } from '../util';
 import { CASH_REFRESH_DAYS } from './Cash';
 
 /** 환율도 현금처럼 2주마다 최신화를 권한다 */
@@ -34,7 +34,7 @@ export function PortfolioTab() {
       ) : (
         <>
           <p className="muted small pad-x">
-            ISA and Overseas together, by what you paid (cost basis). Sells aren't tracked.
+            ISA and US together, by what you paid (cost basis). Sells aren't tracked.
             {w.unpriced > 0 && ` ${w.unpriced} ${w.unpriced === 1 ? 'buy has' : 'buys have'} no price, so ${w.unpriced === 1 ? 'it counts' : 'they count'} in shares only.`}
           </p>
           <section className="card">
@@ -80,7 +80,7 @@ function FxCard() {
             $1 = <b>{fmtMoney(s.fx.usdKrw, 'KRW')}</b>
           </div>
         ) : (
-          <p className="small">Enter how many won one dollar is. It's used to add up ISA (₩) and Overseas ($) buys.</p>
+          <p className="small">Enter how many won one dollar is. It's used to add up ISA (₩) and US ($) buys.</p>
         )}
         {age !== null && !stale && <div className="muted small">Updated {ago(age)}</div>}
         {stale && (
@@ -230,9 +230,6 @@ function TradeHistory({ list, s }: { list: Trade[]; s: AppState }) {
       <section className="card list-card">
         {shown.map((x) => {
           const tk = t(x.tickerId);
-          // 기록 시각은 한국 시간. 미장은 뉴욕 날짜가 거래일이라 한국 날짜와 다르면 따로 적는다
-          const kstDay = x.at ? ymdIn(KST, new Date(x.at)) : null;
-          const sessionNote = x.at && kstDay !== x.date ? ` · ${fmtDay(x.date)} session` : '';
           const krw = x.amount !== null && x.currency === 'USD' ? toKrw(x.amount, 'USD', s.fx.usdKrw) : null;
           return (
             <button key={x.id} className="trade-row" onClick={() => x.planId && nav.push({ name: 'plan', id: x.planId })} disabled={!x.planId}>
@@ -244,8 +241,8 @@ function TradeHistory({ list, s }: { list: Trade[]; s: AppState }) {
                   {x.source === 'unplanned' && <span className="tag tag-buy">Unplanned</span>}
                 </span>
                 <span className="trow-sub">
-                  {x.source === 'plan' ? x.label : x.source === 'savings' ? 'Savings' : 'Unplanned buy'} · {x.at ? `${fmtKst(x.at)} KST` : fmtDay(x.date)}
-                  {sessionNote}
+                  {/* 거래일 + 그날 0시부터 센 한국 시각 (미장 새벽 매수는 24시를 넘는다) */}
+                  {x.source === 'plan' ? x.label : x.source === 'savings' ? 'Savings' : 'Unplanned buy'} · {x.at ? fmtTradeTime(x.at, x.date) : fmtTradeDate(x.date)}
                 </span>
               </span>
               <span className="trow-qty">

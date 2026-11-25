@@ -289,13 +289,18 @@ export function setRemainderDone(planId: string, done: boolean): void {
   setState((s) => updatePlan(s, planId, (p) => ({ ...p, remainderDone: done })));
 }
 
-/** 규칙 외 매수 기록. 거래일은 그 종목 시장 기준 (국장: 서울, 미장: 뉴욕) */
+/** 사용자가 표시한 미국 휴장일들 */
+function usHolidays(s: AppState): string[] {
+  return s.closedDays.filter((c) => c.market === 'US').map((c) => c.date);
+}
+
+/** 규칙 외 매수 기록. 거래일은 그 종목 시장 기준 (국장: 서울, 미장: 프리마켓~주간거래, 휴장일은 건너뜀) */
 export function addOffRule(t: Ticker, qty: number, price: number | null, reason: string): void {
   const priceText = price ? ` @ ${fmtMoney(price, t.currency)}` : '';
   setState((s) => {
     const next = log(s, 'off-rule', t.symbol, `${qty} ${qty === 1 ? 'share' : 'shares'}${priceText}`, reason);
     const [item, ...rest] = next.logs;
-    return { ...next, logs: [{ ...item, buy: { tickerId: t.id, qty, price, date: tradeDay(marketOf(t)) } }, ...rest] };
+    return { ...next, logs: [{ ...item, buy: { tickerId: t.id, qty, price, date: tradeDay(marketOf(t), new Date(), usHolidays(s)) } }, ...rest] };
   });
 }
 

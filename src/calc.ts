@@ -1,4 +1,5 @@
 import type { Account, ClosedDay, Currency, Entry, Market, Plan, RuleGroup, RuleType, Ticker, TickerGroup } from './types';
+import { tradeDay, usWeekendNow } from './util';
 
 /** ISA는 원화 계좌, 직투는 달러 계좌 */
 export function accountCurrency(a: Account): Currency {
@@ -90,6 +91,16 @@ export function isWeekend(ymd: string): boolean {
 /** 오늘 그 장이 쉬는지. 주말이거나 사용자가 휴장일로 표시했으면 쉰다 */
 export function isClosed(market: Market, today: string, closedDays: ClosedDay[]): boolean {
   return isWeekend(today) || closedDays.some((c) => c.date === today && c.market === market);
+}
+
+/** 그 장이 주말이라 지금 쉬는지. 미장 거래일은 주말이 되지 않으므로(금요일로 묶임) 뉴욕 시각으로 따로 본다 */
+export function weekendNow(market: Market, now: Date = new Date()): boolean {
+  return market === 'US' ? usWeekendNow(now) : isWeekend(tradeDay('KR', now));
+}
+
+/** 지금 그 장에서 살 수 있는지: 주말도, 사용자가 표시한 휴장일도 아님 */
+export function marketClosedNow(market: Market, closedDays: ClosedDay[], now: Date = new Date()): boolean {
+  return weekendNow(market, now) || isClosed(market, tradeDay(market, now), closedDays);
 }
 
 /** 이 규칙을 이 종목에 쓸 수 있는지 */

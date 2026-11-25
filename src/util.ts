@@ -18,39 +18,102 @@ export function nowIso(): string {
 }
 
 /* ───────── 거래일과 시간대 ─────────
- * 국장(ISA)은 서울 날짜, 미장(직투)은 뉴욕 날짜가 그 거래의 날짜다.
- * 미장은 정규장부터 애프터마켓까지 뉴욕 기준 같은 날이라, 한국 시간으로
- * 24일 23시에 사든 25일 04시에 사든 24일 거래가 된다. 기록은 한국 시간으로 보여 준다.
+ * 국장(ISA): 서울 날짜가 거래일.
+ * 미장(US): 미국 거래일 하나 = 그날 프리마켓 개장(뉴욕 04:00)부터 다음 거래일 프리마켓 개장 전까지.
+ *   프리마켓 04:00–09:30, 정규장 09:30–16:00, 애프터마켓 16:00–20:00 (뉴욕 시간),
+ *   그 뒤 국내 증권사 주간거래(뉴욕 20:00–04:00)도 직전 거래일로 본다.
+ *   예) 한국 토 05:00 (뉴욕 금 15:00) → 금요일, 한국 월 11:00 주간거래 (뉴욕 일 21:00) → 금요일.
+ *   뉴욕 시간대로 계산하므로 서머타임은 저절로 맞는다 (한국 기준 프리마켓 18:00, 서머타임 17:00).
+ *   주말과, 사용자가 표시한 미국 휴장일은 건너뛰고 그 전 거래일로 간다.
+ * 매수 시각은 그냥 한국 시간으로 보여 준다. 날짜·요일만 거래일 기준.
  */
 export const KST = 'Asia/Seoul';
-const MARKET_TZ: Record<Market, string> = { KR: KST, US: 'America/New_York' };
+const NY = 'America/New_York';
+/** 미국 거래일이 시작되는 뉴욕 시각 (프리마켓 개장) */
+const US_DAY_START_HOUR = 4;
 
-/** 그 시간대의 날짜 YYYY-MM-DD */
-export function ymdIn(timeZone: string, d: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
+interface ZonedParts {
+  ymd: string;
+  hour: number;
+  minute: number;
 }
 
-/** 그 시장의 거래일 (국장: 서울 날짜, 미장: 뉴욕 날짜) */
-export function tradeDay(market: Market, d: Date = new Date()): string {
-  return ymdIn(MARKET_TZ[market], d);
-}
-
-/** 한국 시간으로 "Nov 25, 2026 04:00" */
-export function fmtKst(iso: string): string {
-  const d = new Date(iso);
+function partsIn(timeZone: string, d: Date): ZonedParts {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: KST,
+    timeZone,
     year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('month')} ${get('day')}, ${get('year')} ${get('hour')}:${get('minute')}`;
+  return { ymd: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')), minute: Number(get('minute')) };
+}
+
+/** 그 시간대의 날짜 YYYY-MM-DD */
+export function ymdIn(timeZone: string, d: Date = new Date()): string {
+  return partsIn(timeZone, d).ymd;
+}
+
+function ymdToUtc(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+/** YYYY-MM-DD 하루 전 */
+export function prevDay(ymd: string): string {
+  return new Date(ymdToUtc(ymd) - 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 0 = 일요일 … 6 = 토요일 */
+export function weekdayOf(ymd: string): number {
+  return new Date(ymdToUtc(ymd)).getUTCDay();
+}
+
+/**
+ * 그 시장의 거래일. 국장: 서울 날짜. 미장: 프리마켓 개장 전이면 전날, 주말이면 직전 금요일.
+ * usHolidays: 건너뛸 미국 휴장일(YYYY-MM-DD). 매수를 기록할 때 넘긴다.
+ * 오늘 화면은 휴장일을 '쉬는 날'로 보여 줘야 하므로 넘기지 않는다.
+ */
+export function tradeDay(market: Market, d: Date = new Date(), usHolidays: string[] = []): string {
+  if (market === 'KR') return ymdIn(KST, d);
+  const ny = partsIn(NY, d);
+  let day = ny.hour < US_DAY_START_HOUR ? prevDay(ny.ymd) : ny.ymd;
+  while (weekdayOf(day) === 0 || weekdayOf(day) === 6 || usHolidays.includes(day)) day = prevDay(day);
+  return day;
+}
+
+/** 미장 주말: 뉴욕 금 20:00 (애프터마켓 마감) ~ 일 20:00 (주간거래 시작) */
+export function usWeekendNow(d: Date = new Date()): boolean {
+  const ny = partsIn(NY, d);
+  const wd = weekdayOf(ny.ymd);
+  return wd === 6 || (wd === 5 && ny.hour >= 20) || (wd === 0 && ny.hour < 20);
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** 요일과 날짜: "Fri, Nov 27" */
+export function fmtWeekDay(ymd: string): string {
+  return `${WEEKDAYS[weekdayOf(ymd)]}, ${fmtDay(ymd)}`;
+}
+
+/** 거래일과 요일: "Fri, Nov 27, 2026" */
+export function fmtTradeDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${WEEKDAYS[weekdayOf(ymd)]}, ${MONTHS[m - 1]} ${d}, ${y}`;
+}
+
+/**
+ * 매수 기록: 날짜·요일은 거래일, 시각은 한국 시간.
+ * 같은 날이면 "Wed, Nov 25, 2026 · 09:30 KST",
+ * 한국 날짜가 다르면 그 날짜도: "Fri, Nov 27, 2026 · Nov 28 05:00 KST".
+ */
+export function fmtTradeTime(iso: string, tradeYmd: string): string {
+  const k = partsIn(KST, new Date(iso));
+  const time = `${String(k.hour).padStart(2, '0')}:${String(k.minute).padStart(2, '0')} KST`;
+  return `${fmtTradeDate(tradeYmd)} · ${k.ymd === tradeYmd ? time : `${fmtDay(k.ymd)} ${time}`}`;
 }
 
 export function fmtMoney(v: number, c: Currency): string {

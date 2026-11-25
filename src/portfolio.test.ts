@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { initialState } from './defaults';
 import { trades, weights } from './portfolio';
 import type { AppState, Plan } from './types';
-import { tradeDay } from './util';
+import { fmtTradeTime, tradeDay, usWeekendNow } from './util';
 
 function state(): AppState {
   const s = initialState();
@@ -43,14 +43,67 @@ function state(): AppState {
   };
 }
 
+// 시각은 모두 UTC로 적고, 주석에 한국 시간(KST)과 뉴욕 시간(NY)을 단다. 2026-11-27은 금요일
+const at = (iso: string) => new Date(iso);
+
 describe('trade day', () => {
-  it('US trades use the New York date, KR trades the Seoul date', () => {
-    // KST Nov 24 23:00 = UTC 14:00 → New York Nov 24
-    expect(tradeDay('US', new Date('2026-11-24T14:00:00Z'))).toBe('2026-11-24');
-    // KST Nov 25 04:00 (after-hours) = UTC Nov 24 19:00 → still New York Nov 24
-    expect(tradeDay('US', new Date('2026-11-24T19:00:00Z'))).toBe('2026-11-24');
-    // the same moment is already Nov 25 in Seoul
-    expect(tradeDay('KR', new Date('2026-11-24T19:00:00Z'))).toBe('2026-11-25');
+  it('KR uses the Seoul date', () => {
+    expect(tradeDay('KR', at('2026-11-24T19:00:00Z'))).toBe('2026-11-25'); // KST 25 04:00
+  });
+
+  it('US: pre-market, regular and after-hours are one US day', () => {
+    expect(tradeDay('US', at('2026-11-27T09:00:00Z'))).toBe('2026-11-27'); // KST Fri 18:00 · NY Fri 04:00 pre-market opens
+    expect(tradeDay('US', at('2026-11-27T14:40:00Z'))).toBe('2026-11-27'); // KST Fri 23:40 · regular
+    expect(tradeDay('US', at('2026-11-27T20:00:00Z'))).toBe('2026-11-27'); // KST Sat 05:00 · NY Fri 15:00 regular
+    expect(tradeDay('US', at('2026-11-28T00:30:00Z'))).toBe('2026-11-27'); // KST Sat 09:30 · NY Fri 19:30 after-hours
+  });
+
+  it('US: daytime trading counts for the previous US trading day', () => {
+    expect(tradeDay('US', at('2026-12-01T06:00:00Z'))).toBe('2026-11-30'); // KST Tue 15:00 · NY Tue 01:00 → Mon
+    expect(tradeDay('US', at('2026-11-30T02:00:00Z'))).toBe('2026-11-27'); // KST Mon 11:00 · NY Sun 21:00 → Fri
+    expect(tradeDay('US', at('2026-11-30T09:00:00Z'))).toBe('2026-11-30'); // KST Mon 18:00 · NY Mon 04:00 → Mon starts
+  });
+
+  it('US: summer time moves the start to 17:00 KST by itself', () => {
+    expect(tradeDay('US', at('2026-07-14T07:59:00Z'))).toBe('2026-07-13'); // KST Jul 14 16:59 · NY 03:59
+    expect(tradeDay('US', at('2026-07-14T08:00:00Z'))).toBe('2026-07-14'); // KST Jul 14 17:00 · NY 04:00
+  });
+
+  it('US weekend runs from Friday 20:00 to Sunday 20:00 New York time', () => {
+    expect(usWeekendNow(at('2026-11-28T00:59:00Z'))).toBe(false); // NY Fri 19:59
+    expect(usWeekendNow(at('2026-11-28T01:00:00Z'))).toBe(true); // NY Fri 20:00
+    expect(usWeekendNow(at('2026-11-30T00:59:00Z'))).toBe(true); // NY Sun 19:59
+    expect(usWeekendNow(at('2026-11-30T01:00:00Z'))).toBe(false); // NY Sun 20:00 · daytime trading
+  });
+});
+
+describe('fmtTradeTime', () => {
+  it('trade date and weekday, then the plain KST clock', () => {
+    expect(fmtTradeTime('2026-11-27T14:40:00Z', '2026-11-27')).toBe('Fri, Nov 27, 2026 · 23:40 KST'); // KST Fri 23:40
+    expect(fmtTradeTime('2026-11-25T00:30:00Z', '2026-11-25')).toBe('Wed, Nov 25, 2026 · 09:30 KST'); // ISA
+  });
+
+  it('adds the KST date when it differs from the trade date', () => {
+    expect(fmtTradeTime('2026-11-27T20:00:00Z', '2026-11-27')).toBe('Fri, Nov 27, 2026 · Nov 28 05:00 KST'); // KST Sat 05:00
+    expect(fmtTradeTime('2026-11-30T02:00:00Z', '2026-11-27')).toBe('Fri, Nov 27, 2026 · Nov 30 11:00 KST'); // KST Mon 11:00 daytime
+  });
+
+  it('a US buy at 17:00 KST', () => {
+    const show = (iso: string) => fmtTradeTime(iso, tradeDay('US', at(iso)));
+    // 지금 (서머타임 아님): 뉴욕 03:00, 프리마켓 전 주간거래 → 직전 거래일
+    expect(show('2026-11-25T08:00:00Z')).toBe('Tue, Nov 24, 2026 · Nov 25 17:00 KST'); // KST Wed 17:00
+    expect(show('2026-11-30T08:00:00Z')).toBe('Fri, Nov 27, 2026 · Nov 30 17:00 KST'); // KST Mon 17:00
+    // 서머타임: 뉴욕 04:00, 프리마켓 개장 → 그날
+    expect(show('2026-07-15T08:00:00Z')).toBe('Wed, Jul 15, 2026 · 17:00 KST');
+  });
+});
+
+describe('US holidays', () => {
+  it('a marked holiday is skipped to the trading day before it', () => {
+    // 추수감사절 Thu Nov 26 휴장. 한국 금 11:00 주간거래 = 뉴욕 목 21:00 → 수요일
+    expect(tradeDay('US', at('2026-11-27T02:00:00Z'), ['2026-11-26'])).toBe('2026-11-25');
+    // 표시하지 않았으면 목요일 그대로
+    expect(tradeDay('US', at('2026-11-27T02:00:00Z'))).toBe('2026-11-26');
   });
 });
 

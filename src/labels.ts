@@ -20,7 +20,7 @@ export const RULE_GROUP_LABEL: Record<RuleGroup | '나스닥', string> = {
 };
 
 export const ACCOUNT_LABEL: Record<Account, string> = {
-  직투: 'Overseas',
+  직투: 'US',
   ISA: 'ISA',
 };
 

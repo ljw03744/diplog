@@ -33,7 +33,7 @@ export function CashCard() {
       {age === null ? (
         <section className="card cash-card stale">
           <div className="card-label">Cash</div>
-          <p className="small">Enter the cash in your ISA and Overseas accounts. DipLog uses it to tell you how many shares to buy, and subtracts every buy you check.</p>
+          <p className="small">Enter the cash in your ISA and US accounts. DipLog uses it to tell you how many shares to buy, and subtracts every buy you check.</p>
           <button className="btn primary block" onClick={() => setOpen(true)}>
             Enter cash balance
           </button>
@@ -54,7 +54,7 @@ export function CashCard() {
               <b>{s.cash.ISA === null ? '—' : fmtMoney(s.cash.ISA, 'KRW')}</b>
             </div>
             <div>
-              <span className="label">Overseas</span>
+              <span className="label">US</span>
               <b>{s.cash.직투 === null ? '—' : fmtMoney(s.cash.직투, 'USD')}</b>
             </div>
           </div>
@@ -98,7 +98,7 @@ export function CashSheet({ onClose }: { onClose: () => void }) {
       <Field label="ISA cash" hint={est && s.cash.ISA !== null ? `Estimate ${fmtMoney(s.cash.ISA, 'KRW')}` : undefined}>
         <NumInput value={isa} onChange={setIsa} placeholder="0" suffix="₩" decimal={false} />
       </Field>
-      <Field label="Overseas cash" hint={est && s.cash.직투 !== null ? `Estimate ${fmtMoney(s.cash.직투, 'USD')}` : undefined}>
+      <Field label="US cash" hint={est && s.cash.직투 !== null ? `Estimate ${fmtMoney(s.cash.직투, 'USD')}` : undefined}>
         <NumInput value={direct} onChange={setDirect} placeholder="0" suffix="$" />
       </Field>
       <div className="row gap">

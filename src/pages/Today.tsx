@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { budgetFor, setMarketClosed, uncheckToday } from '../actions';
-import { boughtQty, compliance, isClosed, isWeekend, marketOf, progress, todayState } from '../calc';
+import { boughtQty, compliance, marketClosedNow, marketOf, progress, todayState, weekendNow } from '../calc';
 import { IconCheck } from '../icons';
 import { accountLabel, MARKET_LABEL, shares } from '../labels';
 import { useNav } from '../nav';
@@ -27,8 +27,8 @@ export function TodayTab() {
   const s = useAppState();
   const [mode, setMode] = useState<'today' | 'ticker'>('today');
   const days = currentDays();
-  const weekend = MARKETS.every((m) => isWeekend(days[m]));
-  const todo = s.plans.filter((p) => todayState(p, dayOf(s, p, days)).kind === 'todo' && planOpen(s, p, days)).length;
+  const weekend = MARKETS.every((m) => weekendNow(m));
+  const todo = s.plans.filter((p) => todayState(p, dayOf(s, p, days)).kind === 'todo' && planOpen(s, p)).length;
   const doneToday = s.plans.filter((p) => p.entries.some((e) => e.date === dayOf(s, p, days))).length;
   const dateLine = new Date().toLocaleDateString('en-US', { timeZone: KST, weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -105,17 +105,17 @@ function BackupBanner({ s }: { s: AppState }) {
   );
 }
 
-/** 이 일정의 종목이 거래되는 장이 오늘 열리는지 */
-function planOpen(s: AppState, p: Plan, days: Days): boolean {
+/** 이 일정의 종목이 거래되는 장이 지금 열리는지 */
+function planOpen(s: AppState, p: Plan): boolean {
   const m = marketOf(s.tickers.find((x) => x.id === p.tickerId));
-  return !isClosed(m, days[m], s.closedDays);
+  return !marketClosedNow(m, s.closedDays);
 }
 
 function TodayList({ s, days }: { s: AppState; days: Days }) {
   const [closedSheet, setClosedSheet] = useState(false);
   const active = s.plans.filter((p) => p.status === 'active');
 
-  if (MARKETS.every((m) => isWeekend(days[m])))
+  if (MARKETS.every((m) => weekendNow(m)))
     return (
       <Empty>
         No buying on weekends.
@@ -125,10 +125,10 @@ function TodayList({ s, days }: { s: AppState; days: Days }) {
     );
 
   const boughtToday = (p: Plan) => p.entries.some((e) => e.date === dayOf(s, p, days));
-  const closed = MARKETS.filter((m) => isClosed(m, days[m], s.closedDays));
-  const holidays = closed.filter((m) => !isWeekend(days[m]));
-  const openMarkets = MARKETS.filter((m) => !isWeekend(days[m]));
-  const skipped = active.filter((p) => !planOpen(s, p, days) && !boughtToday(p));
+  const closed = MARKETS.filter((m) => marketClosedNow(m, s.closedDays));
+  const holidays = closed.filter((m) => !weekendNow(m));
+  const openMarkets = MARKETS.filter((m) => !weekendNow(m));
+  const skipped = active.filter((p) => !planOpen(s, p) && !boughtToday(p));
   const doneToday = s.plans.filter((p) => p.status === 'done' && boughtToday(p));
   // What's left goes on top, what's done today goes to the bottom
   const list = [...active.filter((p) => !skipped.includes(p)), ...doneToday].sort((a, b) => Number(boughtToday(a)) - Number(boughtToday(b)));
@@ -138,7 +138,7 @@ function TodayList({ s, days }: { s: AppState; days: Days }) {
       {closed.length > 0 && (
         <div className="closed-note">
           <span>
-            {closed.map((m) => `${MARKET_LABEL[m]} market ${isWeekend(days[m]) ? 'closed (weekend)' : 'holiday'}`).join(' · ')}
+            {closed.map((m) => `${MARKET_LABEL[m]} market ${weekendNow(m) ? 'closed (weekend)' : 'holiday'}`).join(' · ')}
             {skipped.length > 0 && ` · ${skipped.length} ${skipped.length === 1 ? 'plan' : 'plans'} skipped`}
           </span>
           {holidays.length > 0 && (
