@@ -1,8 +1,8 @@
-import { calcBudget, calcBuy, calcPlan, costInAccount, makeEntries, roundBudget, type BuyResult } from './calc';
+import { calcBudget, calcBuy, calcPlan, costInAccount, makeEntries, marketOf, roundBudget, type BuyResult } from './calc';
 import { ruleGroupLabel } from './labels';
 import { setState, getState } from './store';
 import type { Account, AppState, Currency, LogItem, LogKind, Market, Plan, Rule, RuleGroup, Saving, Ticker } from './types';
-import { fmtMoney, nowIso, uid } from './util';
+import { fmtMoney, nowIso, tradeDay, uid } from './util';
 
 export const MIN_REASON = 10;
 
@@ -289,9 +289,19 @@ export function setRemainderDone(planId: string, done: boolean): void {
   setState((s) => updatePlan(s, planId, (p) => ({ ...p, remainderDone: done })));
 }
 
-export function addOffRule(label: string, qty: number, price: number | null, currency: Currency, reason: string): void {
-  const priceText = price ? ` @ ${currency === 'USD' ? '$' + price : '₩' + price.toLocaleString('en-US')}` : '';
-  setState((s) => log(s, 'off-rule', label, `${qty} ${qty === 1 ? 'share' : 'shares'}${priceText}`, reason));
+/** 규칙 외 매수 기록. 거래일은 그 종목 시장 기준 (국장: 서울, 미장: 뉴욕) */
+export function addOffRule(t: Ticker, qty: number, price: number | null, reason: string): void {
+  const priceText = price ? ` @ ${fmtMoney(price, t.currency)}` : '';
+  setState((s) => {
+    const next = log(s, 'off-rule', t.symbol, `${qty} ${qty === 1 ? 'share' : 'shares'}${priceText}`, reason);
+    const [item, ...rest] = next.logs;
+    return { ...next, logs: [{ ...item, buy: { tickerId: t.id, qty, price, date: tradeDay(marketOf(t)) } }, ...rest] };
+  });
+}
+
+/** 1달러 = 몇 원 */
+export function updateFx(usdKrw: number): void {
+  setState((s) => ({ ...s, fx: { usdKrw, updatedAt: nowIso() } }));
 }
 
 export function saveTicker(t: Ticker): void {

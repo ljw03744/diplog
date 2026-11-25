@@ -45,7 +45,8 @@ export function NewPlanPage({ tickerId }: { tickerId?: string }) {
   const [seed, setSeed] = useState(first.value);
   const [seedCur, setSeedCur] = useState<Currency>(first.cur);
   const [price, setPrice] = useState('');
-  const [fx, setFx] = useState('');
+  // 포트폴리오 화면에서 입력한 환율로 미리 채운다
+  const [fx, setFx] = useState(s.fx.usdKrw ? String(s.fx.usdKrw) : '');
   const [checks, setChecks] = useState<boolean[]>([]);
   const [concurrent, setConcurrent] = useState('');
 

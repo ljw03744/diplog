@@ -1,4 +1,4 @@
-import type { Currency } from './types';
+import type { Currency, Market } from './types';
 
 export function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -15,6 +15,42 @@ export function todayStr(d: Date = new Date()): string {
 
 export function nowIso(): string {
   return new Date().toISOString();
+}
+
+/* ───────── 거래일과 시간대 ─────────
+ * 국장(ISA)은 서울 날짜, 미장(직투)은 뉴욕 날짜가 그 거래의 날짜다.
+ * 미장은 정규장부터 애프터마켓까지 뉴욕 기준 같은 날이라, 한국 시간으로
+ * 24일 23시에 사든 25일 04시에 사든 24일 거래가 된다. 기록은 한국 시간으로 보여 준다.
+ */
+export const KST = 'Asia/Seoul';
+const MARKET_TZ: Record<Market, string> = { KR: KST, US: 'America/New_York' };
+
+/** 그 시간대의 날짜 YYYY-MM-DD */
+export function ymdIn(timeZone: string, d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** 그 시장의 거래일 (국장: 서울 날짜, 미장: 뉴욕 날짜) */
+export function tradeDay(market: Market, d: Date = new Date()): string {
+  return ymdIn(MARKET_TZ[market], d);
+}
+
+/** 한국 시간으로 "Nov 25, 2026 04:00" */
+export function fmtKst(iso: string): string {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: KST,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('month')} ${get('day')}, ${get('year')} ${get('hour')}:${get('minute')}`;
 }
 
 export function fmtMoney(v: number, c: Currency): string {

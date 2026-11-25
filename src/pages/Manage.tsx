@@ -423,7 +423,7 @@ export function OffRulePage() {
         disabled={!ok}
         onClick={() => {
           const p = parseNum(price);
-          addOffRule(t!.symbol, q, p > 0 ? p : null, t!.currency, reason);
+          addOffRule(t!, q, p > 0 ? p : null, reason);
           nav.pop();
         }}
       >

@@ -107,6 +107,7 @@ export function initialState(): AppState {
     savings: [],
     cash: { ISA: null, 직투: null, updatedAt: null },
     closedDays: [],
+    fx: { usdKrw: null, updatedAt: null },
     settings: {
       lastBackupAt: null,
       rulesRev: RULES_REV,

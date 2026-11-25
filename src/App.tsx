@@ -4,13 +4,14 @@ import { LogsTab } from './pages/Logs';
 import { OffRulePage, RuleFormPage, RulesPage, SavingsPage, TickerFormPage, TickersPage } from './pages/Manage';
 import { NewPlanPage } from './pages/NewPlan';
 import { PlanDetailPage } from './pages/PlanDetail';
+import { fxIsStale, PortfolioTab } from './pages/Portfolio';
 import { SettingsTab } from './pages/Settings';
 import { TodayTab } from './pages/Today';
 import { useAppState } from './store';
-import { IconLog, IconPlus, IconSettings, IconToday } from './icons';
+import { IconLog, IconPie, IconPlus, IconSettings, IconToday } from './icons';
 import { Sheet } from './ui';
 
-type Tab = 'today' | 'logs' | 'settings';
+type Tab = 'today' | 'portfolio' | 'logs' | 'settings';
 
 function renderRoute(r: Route) {
   switch (r.name) {
@@ -59,6 +60,7 @@ export function App() {
       <div className="app" aria-hidden={!!top}>
         <main>
           {tab === 'today' && <TodayTab />}
+          {tab === 'portfolio' && <PortfolioTab />}
           {tab === 'logs' && <LogsTab />}
           {tab === 'settings' && <SettingsTab />}
         </main>
@@ -69,6 +71,13 @@ export function App() {
 
         <nav className="tabbar">
           <TabButton on={tab === 'today'} onClick={() => setTab('today')} icon={<IconToday />} label="Today" badge={activeCount} />
+          <TabButton
+            on={tab === 'portfolio'}
+            onClick={() => setTab('portfolio')}
+            icon={<IconPie />}
+            label="Portfolio"
+            dot={fxIsStale(s) ? 'Exchange rate needs an update' : undefined}
+          />
           <TabButton on={tab === 'logs'} onClick={() => setTab('logs')} icon={<IconLog />} label="Log" />
           <TabButton on={tab === 'settings'} onClick={() => setTab('settings')} icon={<IconSettings />} label="Settings" />
         </nav>
@@ -101,12 +110,28 @@ export function App() {
   );
 }
 
-function TabButton({ on, onClick, icon, label, badge }: { on: boolean; onClick: () => void; icon: ReactNode; label: string; badge?: number }) {
+function TabButton({
+  on,
+  onClick,
+  icon,
+  label,
+  badge,
+  dot,
+}: {
+  on: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+  badge?: number;
+  /** 알림 점. 값은 화면 낭독기용 설명 */
+  dot?: string;
+}) {
   return (
-    <button className={'tabbtn' + (on ? ' on' : '')} onClick={onClick} aria-current={on ? 'page' : undefined}>
+    <button className={'tabbtn' + (on ? ' on' : '')} onClick={onClick} aria-current={on ? 'page' : undefined} aria-label={dot ? `${label}, ${dot}` : undefined}>
       <span className="tabicon" aria-hidden>
         {icon}
         {!!badge && <span className="badge">{badge}</span>}
+        {dot && !badge && <span className="badge dot" />}
       </span>
       <span>{label}</span>
     </button>

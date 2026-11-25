@@ -116,6 +116,8 @@ export interface LogItem {
   label: string;
   detail: string;
   reason: string;
+  /** 규칙 외 매수: 종목·수량·가격·거래일. 예전 기록에는 없음 (label·detail에서 읽어 낸다) */
+  buy?: { tickerId: string; qty: number; price: number | null; date: string };
 }
 
 export interface Saving {
@@ -161,5 +163,7 @@ export interface AppState {
   savings: Saving[];
   cash: Cash;
   closedDays: ClosedDay[];
+  /** 1달러 = 몇 원. 포트폴리오 화면에서 입력하고, 2주마다 최신화를 권한다 */
+  fx: { usdKrw: number | null; updatedAt: string | null };
   settings: Settings;
 }

@@ -7,18 +7,30 @@ import { useNav } from '../nav';
 import { useAppState } from '../store';
 import type { AppState, Market, Plan } from '../types';
 import { Bar, Empty, Logo, Sheet, UnderlineTabs } from '../ui';
-import { daysBetween, fmtDate, fmtMoney, todayStr } from '../util';
+import { daysBetween, fmtDate, fmtDay, fmtMoney, KST, tradeDay } from '../util';
 import { BuySheet } from './BuySheet';
 import { CashCard } from './Cash';
+
+/** 시장마다 오늘 거래일. 국장은 서울 날짜, 미장은 뉴욕 날짜 */
+export type Days = Record<Market, string>;
+
+export function currentDays(): Days {
+  return { KR: tradeDay('KR'), US: tradeDay('US') };
+}
+
+/** 이 일정 종목의 오늘 거래일 */
+function dayOf(s: AppState, p: Plan, days: Days): string {
+  return days[marketOf(s.tickers.find((x) => x.id === p.tickerId))];
+}
 
 export function TodayTab() {
   const s = useAppState();
   const [mode, setMode] = useState<'today' | 'ticker'>('today');
-  const today = todayStr();
-  const weekend = isWeekend(today);
-  const todo = s.plans.filter((p) => todayState(p, today).kind === 'todo' && planOpen(s, p, today)).length;
-  const doneToday = s.plans.filter((p) => p.entries.some((e) => e.date === today)).length;
-  const dateLine = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const days = currentDays();
+  const weekend = MARKETS.every((m) => isWeekend(days[m]));
+  const todo = s.plans.filter((p) => todayState(p, dayOf(s, p, days)).kind === 'todo' && planOpen(s, p, days)).length;
+  const doneToday = s.plans.filter((p) => p.entries.some((e) => e.date === dayOf(s, p, days))).length;
+  const dateLine = new Date().toLocaleDateString('en-US', { timeZone: KST, weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div className="tab">
@@ -49,7 +61,7 @@ export function TodayTab() {
           { value: 'ticker', label: 'By ticker' },
         ]}
       />
-      {mode === 'today' ? <TodayList s={s} today={today} /> : <ByTicker s={s} />}
+      {mode === 'today' ? <TodayList s={s} days={days} /> : <ByTicker s={s} />}
     </div>
   );
 }
@@ -94,16 +106,16 @@ function BackupBanner({ s }: { s: AppState }) {
 }
 
 /** 이 일정의 종목이 거래되는 장이 오늘 열리는지 */
-function planOpen(s: AppState, p: Plan, today: string): boolean {
-  const t = s.tickers.find((x) => x.id === p.tickerId);
-  return !isClosed(marketOf(t), today, s.closedDays);
+function planOpen(s: AppState, p: Plan, days: Days): boolean {
+  const m = marketOf(s.tickers.find((x) => x.id === p.tickerId));
+  return !isClosed(m, days[m], s.closedDays);
 }
 
-function TodayList({ s, today }: { s: AppState; today: string }) {
+function TodayList({ s, days }: { s: AppState; days: Days }) {
   const [closedSheet, setClosedSheet] = useState(false);
   const active = s.plans.filter((p) => p.status === 'active');
 
-  if (isWeekend(today))
+  if (MARKETS.every((m) => isWeekend(days[m])))
     return (
       <Empty>
         No buying on weekends.
@@ -112,25 +124,28 @@ function TodayList({ s, today }: { s: AppState; today: string }) {
       </Empty>
     );
 
-  const closed = MARKETS.filter((m) => isClosed(m, today, s.closedDays));
-  const skipped = active.filter((p) => !planOpen(s, p, today) && !p.entries.some((e) => e.date === today));
-  const doneToday = s.plans.filter((p) => p.status === 'done' && p.entries.some((e) => e.date === today));
+  const boughtToday = (p: Plan) => p.entries.some((e) => e.date === dayOf(s, p, days));
+  const closed = MARKETS.filter((m) => isClosed(m, days[m], s.closedDays));
+  const holidays = closed.filter((m) => !isWeekend(days[m]));
+  const openMarkets = MARKETS.filter((m) => !isWeekend(days[m]));
+  const skipped = active.filter((p) => !planOpen(s, p, days) && !boughtToday(p));
+  const doneToday = s.plans.filter((p) => p.status === 'done' && boughtToday(p));
   // What's left goes on top, what's done today goes to the bottom
-  const list = [...active.filter((p) => !skipped.includes(p)), ...doneToday].sort(
-    (a, b) => Number(a.entries.some((e) => e.date === today)) - Number(b.entries.some((e) => e.date === today)),
-  );
+  const list = [...active.filter((p) => !skipped.includes(p)), ...doneToday].sort((a, b) => Number(boughtToday(a)) - Number(boughtToday(b)));
 
   return (
     <>
       {closed.length > 0 && (
         <div className="closed-note">
           <span>
-            {closed.map((m) => MARKET_LABEL[m]).join(' and ')} market holiday today
+            {closed.map((m) => `${MARKET_LABEL[m]} market ${isWeekend(days[m]) ? 'closed (weekend)' : 'holiday'}`).join(' · ')}
             {skipped.length > 0 && ` · ${skipped.length} ${skipped.length === 1 ? 'plan' : 'plans'} skipped`}
           </span>
-          <button className="qty-link" onClick={() => setClosedSheet(true)}>
-            Change
-          </button>
+          {holidays.length > 0 && (
+            <button className="qty-link" onClick={() => setClosedSheet(true)}>
+              Change
+            </button>
+          )}
         </div>
       )}
       {list.length === 0 ? (
@@ -148,25 +163,25 @@ function TodayList({ s, today }: { s: AppState; today: string }) {
       ) : (
         <section className="card list-card">
           {list.map((p) => (
-            <TodayRow key={p.id} plan={p} s={s} today={today} />
+            <TodayRow key={p.id} plan={p} s={s} today={dayOf(s, p, days)} />
           ))}
         </section>
       )}
-      {closed.length === 0 && (
+      {holidays.length < openMarkets.length && (
         <button className="text-btn" onClick={() => setClosedSheet(true)}>
           Market holiday today?
         </button>
       )}
-      {closedSheet && <ClosedSheet s={s} today={today} onClose={() => setClosedSheet(false)} />}
+      {closedSheet && <ClosedSheet s={s} days={days} markets={openMarkets} onClose={() => setClosedSheet(false)} />}
     </>
   );
 }
 
 const MARKETS: Market[] = ['KR', 'US'];
 
-/** 휴장일 표시: 버튼을 누른 뒤 쉬는 장을 고른다 (국장·미장 휴장일이 다르다) */
-function ClosedSheet({ s, today, onClose }: { s: AppState; today: string; onClose: () => void }) {
-  const [pick, setPick] = useState<Market[]>(MARKETS.filter((m) => s.closedDays.some((c) => c.date === today && c.market === m)));
+/** 휴장일 표시: 버튼을 누른 뒤 쉬는 장을 고른다 (국장·미장 휴장일이 다르다). 주말인 장은 보이지 않는다 */
+function ClosedSheet({ s, days, markets, onClose }: { s: AppState; days: Days; markets: Market[]; onClose: () => void }) {
+  const [pick, setPick] = useState<Market[]>(markets.filter((m) => s.closedDays.some((c) => c.date === days[m] && c.market === m)));
   const count = (m: Market) => s.plans.filter((p) => p.status === 'active' && marketOf(s.tickers.find((t) => t.id === p.tickerId)) === m).length;
   const toggle = (m: Market) => setPick((v) => (v.includes(m) ? v.filter((x) => x !== m) : [...v, m]));
   return (
@@ -174,12 +189,15 @@ function ClosedSheet({ s, today, onClose }: { s: AppState; today: string; onClos
       <h2 className="sheet-title">Which market has a holiday today?</h2>
       <p className="muted">Plans for that market are skipped today and continue on the next trading day.</p>
       <div className="checks">
-        {MARKETS.map((m) => (
+        {markets.map((m) => (
           <label key={m} className="check-row">
             <input type="checkbox" checked={pick.includes(m)} onChange={() => toggle(m)} />
             <span>
               {m === 'KR' ? 'Korea (KRX)' : 'US (NYSE · Nasdaq)'}
-              <span className="muted small"> · {count(m)} active {count(m) === 1 ? 'plan' : 'plans'}</span>
+              <span className="muted small">
+                {' '}
+                · {fmtDay(days[m])} session · {count(m)} active {count(m) === 1 ? 'plan' : 'plans'}
+              </span>
             </span>
           </label>
         ))}
@@ -191,7 +209,7 @@ function ClosedSheet({ s, today, onClose }: { s: AppState; today: string; onClos
         <button
           className="btn primary grow"
           onClick={() => {
-            MARKETS.forEach((m) => setMarketClosed(today, m, pick.includes(m)));
+            markets.forEach((m) => setMarketClosed(days[m], m, pick.includes(m)));
             onClose();
           }}
         >
