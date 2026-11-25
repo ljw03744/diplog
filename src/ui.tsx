@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { MIN_REASON } from './actions';
 import { IconBack } from './icons';
 import { useNav } from './nav';
 import type { TickerGroup } from './types';
+import { groupDigits } from './util';
 
 export function Page({
   title,
@@ -126,14 +127,38 @@ export function NumInput({
   suffix?: string;
   decimal?: boolean;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  // 쉼표를 넣고 빼면 글자 수가 바뀌므로, 커서 앞의 숫자 개수를 기억했다가 같은 자리로 되돌린다
+  const caret = useRef<number | null>(null);
+  const shown = groupDigits(value, decimal);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || caret.current === null || document.activeElement !== el) return;
+    let seen = 0;
+    let pos = 0;
+    while (pos < shown.length && seen < caret.current) {
+      if (shown[pos] !== ',') seen++;
+      pos++;
+    }
+    el.setSelectionRange(pos, pos);
+    caret.current = null;
+  });
+
   return (
     <div className="num">
       <input
+        ref={ref}
         type="text"
         inputMode={decimal ? 'decimal' : 'numeric'}
-        value={value}
+        value={shown}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+        onChange={(e) => {
+          const raw = e.target.value;
+          const before = raw.slice(0, e.target.selectionStart ?? raw.length);
+          caret.current = before.replace(/[^0-9.]/g, '').length;
+          onChange(groupDigits(raw, decimal));
+        }}
       />
       {suffix && <span className="num-suffix">{suffix}</span>}
     </div>

@@ -51,6 +51,16 @@ export function parseNum(s: string): number {
   return Number(t);
 }
 
+/** 숫자 입력에 세 자리마다 쉼표: "1234567.5" → "1,234,567.5". decimal이 아니면 소수점을 뺀다 */
+export function groupDigits(v: string, decimal = true): string {
+  const clean = v.replace(/[^0-9.]/g, '');
+  const dot = decimal ? clean.indexOf('.') : -1;
+  const int = (dot < 0 ? clean : clean.slice(0, dot)).replace(/\./g, '');
+  const frac = dot < 0 ? null : clean.slice(dot + 1).replace(/\./g, '');
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return frac === null ? grouped : `${grouped}.${frac}`;
+}
+
 /**
  * 파일을 공유 시트로 보내고, 공유가 안 되는 환경이면 내려받는다.
  * iPhone에서는 공유 시트에서 '파일에 저장'이나 다른 앱(Claude 등)을 고를 수 있다.
